@@ -79,6 +79,17 @@ The first direct-write API serializes transactions within one domain and rejects
 
 Each result domain has one atomic publication group. Independent maintenance schedules belong to separate consuming result domains, even when they share input history and arrangements. G3 qualifies this separation locally over a common input timeline; G4 adds distributed groups and general cross-domain imports. Views deliberately placed in one publication group retain that group's atomic visibility boundary.
 
+### Intentional non-goals (anti-features)
+
+Following [FoundationDB's distinction between core features and anti-features](https://apple.github.io/foundationdb/anti-features.html), preserve the following product boundaries unless a reviewed product/architecture decision changes them:
+
+- Rockstream is a SQL-first incremental database, not a general distributed-compute framework or an unrestricted OLTP replacement. No arbitrary user code in the correctness-critical execution path or implied transactions spanning independent source systems.
+- No unbounded transactions, resource consumption, retry windows or historical retention promises. Define supported envelopes and explicit errors/backpressure; chunk physical work without splitting a promised atomic logical transaction or losing an accepted obligation.
+- No requirement for a separately operated coordination service or always-running Rockstream quorum in the default object-native profile; full suspension is conditional on durable protection and a documented activation mechanism.
+- No weaker correctness mode that silently skips input, truncates output, reads an incompatible cut or reclaims protected state in order to improve availability, cost or latency.
+
+Distinguish these principles from initial release limits. One active maintenance interval per domain, one metadata root, bounded scalar acyclic execution, no general cross-domain atomic writes, and limited SQL capabilities are deliberate initial constraints; widening them requires a use case, measured benefit where relevant, a reviewed contract and qualification. They are not promises to implement every generalization or permanent exclusions. Record unsupported behavior explicitly instead of prebuilding speculative abstractions.
+
 ## 5. Deployment profiles
 
 | Profile | Intended use | Durability and availability claim |
