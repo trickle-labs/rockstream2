@@ -8,18 +8,20 @@
 
 Build a **SQL-first streaming database** whose internal engine optimizes a whole workload of incremental relational computations. The organizing objects are versioned relations, shared arrangements and atomically published results. Applications specify SQL, freshness and retention; they do not assemble a general-purpose computation framework. Compile SQL into typed incremental algebra, maintain it on disposable workers, and serve consistent versions from independently sized read pools.
 
-The working choices are **DBSP semantics, a lean Rockstream-native computation runtime, Apache Arrow batches with DataFusion integration, SlateDB-backed arrangements, logical MVCC and object-storage-backed metadata**. Reuse existing Rockstream algorithms and verification infrastructure where their contracts fit. Qualify important component costs before locking versions; Timely/Differential remains a serious runtime fallback. This preference does not claim an unmeasured implementation advantage.
+The working choices are **DBSP semantics, a lean Rockstream-native computation runtime, Apache Arrow batches with DataFusion integration, SlateDB-backed arrangements, logical MVCC and object-storage-backed metadata**. Reuse existing Rockstream algorithms and verification infrastructure where their contracts fit. Qualify important component costs before locking versions; Timely/Differential remains a serious comparison candidate. This preference does not claim an unmeasured implementation advantage.
 
 De-risk these choices before building the full engine. Rockstream owns the semantic, publication, retention and recovery guarantees; component choices must satisfy them within measured operating budgets. Decouple logical-operation frequency from remote metadata writes, physical checkpoints and full-history reconstruction. Retain one object-backed authority initially and make sharing optional, budgeted and reversible.
 
 | Refinement | Required early decision |
 | --- | --- |
-| Coordination | P0.4: bounded adaptive group commits and reader-group pins; retain linearizable latest selection and explicit retry/revocation safety |
-| Logical state | P0.2: current-state access plus timestamped deltas and consolidated bases; compare clone recovery with immutable attempts and amortize checkpoints |
+| Coordination | P0.4: one root with explicit dependency scopes, bounded group commits and reader-group pins; measure the full mandatory path and preserve the selected failure model |
+| Logical state | P0.2: compare SlateDB history with separate immutable bases/deltas plus SlateDB indexes; independently select attempt isolation and checkpoint cadence; persist required recovery state initially |
 | Runtime | P0.3: bounded acyclic scalar-epoch kernel, one active interval/domain; binding comparison with established runtime components |
-| Rewrite | P0.1: transfer donor tests and compare original engine, new kernel and an independent oracle at the same complete cuts |
-| Sharing | P0.8: 100/1,000-view lifetime costs, independent consumer contracts and verified isolation; preserve the factorization experiment |
+| Rewrite | P0.1: seed the native candidate from reviewed donor dispositions; compare original engine, new kernel and an independent oracle at the same complete cuts |
+| Sharing | P0.8: semantic/security eligibility, then admitted shared or isolated placement; 100/1,000-view lifetime costs, independent schedules, protected policy changes and verified isolation |
 | Hibernation | P0.7: stop every process, lose all caches, recover exact state and measure the whole cold cycle; partial suspension for ineligible workloads |
+
+[ADR 0011](docs/adr/0011-risk-reduction-before-implementation.md) critiques the alternatives and fixes their decision boundaries. Early per-domain roots, universally disposable indexes and mandatory cadence cohorts are not prerequisites. A faster tier must preserve the cloud failure contract, and actual reclamation must be exercised before declaring storage economics feasible.
 
 The [G0 feasibility decisions](docs/planning/qualification.md#g0-feasibility-decisions) require predeclared acceptance limits, negative controls and an explicit fallback. These refinements are proposed requirements and experiments; no risk is marked resolved and no performance goal is promoted by this documentation.
 

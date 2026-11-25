@@ -18,6 +18,7 @@ The working architecture combines DBSP semantics, a lean Rockstream-native runti
 | [Implementation start](docs/planning/implementation-start.md) | First user experience, golden workload, feasibility experiments and initial issue seeds |
 | [Current-system audit](docs/research/current-system-audit.md) | Evidence-based comparison with the existing Rockstream |
 | [Decision records](docs/adr/README.md) | Chosen direction, alternatives, consequences, and prototype gates |
+| [Pre-implementation critique](docs/adr/0011-risk-reduction-before-implementation.md) | Which alternatives reduce risk, which add it, and how the existing experiments decide |
 
 ## Engineering specifications
 
