@@ -14,6 +14,8 @@ Separate authoritative state from disposable compute. Protected data and metadat
 
 Support continuous, freshness-batched, scheduled and on-demand maintenance. Logical MVCC and per-consumer cursors let one consumer sleep while another advances a shared arrangement, subject to retained history and explicit publication dependencies. Whole-deployment hibernation is a distinct, admitted lifecycle transition, `Active → Draining → Dormant → Restoring → Active`, recorded in authoritative metadata.
 
+Each consumer has an independent retention, maintenance and recovery budget. For scheduled or on-demand work, compare continuous maintenance, retaining incremental history, replay from a protected base/input log, and rebuild from a durable snapshot with a certified tail. Choose only among qualified strategies satisfying the same source, retained-cut and freshness obligations, including cold reconstruction and catch-up. Rebuilding current state cannot replace promised history; initial required state stays durable until any replacement recipe and retention handoff are qualified. Isolate an expensive consumer when sharing costs more or violates another consumer's admitted SLO.
+
 Before dormancy, serialize admissions and wake requests against the transition; publish completed work or retain accepted input for replay; protect exact state, history, outbox and recovery roots; and fence retiring owners. Protection cannot rely on the stopped process renewing a lease or checkpoint. On resume, re-read the authoritative root, conditionally acquire fresh generations, validate source/cursor continuity, restore protected state and replay under the ordinary correctness protocol. Concurrent activators and a crash during drain/resume must be safe.
 
 ## What full hibernation requires
@@ -34,6 +36,8 @@ An always-on gateway or external event/schedule trigger is an optional integrati
 A required external coordination cluster adds a separate operational system and idle capacity floor. Embedding a Raft library can avoid a separately installed service, but [Raft requires majority agreement](https://raft.github.io/raft.pdf) for committed decisions; it does not alone supply activation, source retention, or a hibernation protocol. Keep embedded Raft as an evidence-driven alternative if the object-backed metadata design cannot satisfy measured needs. Adopting it would require explicit storage, membership, restart and sleeping-profile qualification.
 
 The chosen design accepts object-store request latency and an initially shared metadata root as costs to measure. Batching, history retention, cache restoration and consumer isolation need explicit budgets. Sleep can save compute but increase retained storage and wake-up work. Report these effects through sleep eligibility/blockers, active roles, consumer cursors, expected catch-up, and measured cold-start cost.
+
+The object-native profile remains the default and may qualify zero-process hibernation from protected object state. An embedded-consensus profile uses the same logical metadata state machine but has its own durable log, membership, active-quorum and stop/restart contract; it cannot inherit the object-native hibernation claim. If source or freshness obligations defeat full hibernation, offer explicitly qualified partial suspension. No failed economic experiment relaxes recovery or retention guarantees.
 
 ## Evidence and gates
 
