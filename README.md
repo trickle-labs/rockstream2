@@ -14,7 +14,8 @@ The working architecture combines DBSP semantics, a lean Rockstream-native runti
 | --- | --- |
 | [Design](DESIGN.md) | Integrated architecture, decisions, boundaries, and an end-to-end transaction |
 | [Requirements](docs/planning/requirements.md) | Product scope, guarantees, target workloads, and measurable success |
-| [Implementation plan](docs/planning/implementation-plan.md) | Work packages, dependencies, exit gates, staffing assumptions, and first milestones |
+| [Implementation plan](docs/planning/implementation-plan.md) | Work packages, dependencies, exit gates, agent capacity and first milestones |
+| [Implementation start](docs/planning/implementation-start.md) | First user experience, golden workload, feasibility experiments and initial issue seeds |
 | [Current-system audit](docs/research/current-system-audit.md) | Evidence-based comparison with the existing Rockstream |
 | [Decision records](docs/adr/README.md) | Chosen direction, alternatives, consequences, and prototype gates |
 
@@ -36,7 +37,7 @@ The working architecture combines DBSP semantics, a lean Rockstream-native runti
 
 ## Implementation philosophy
 
-Prototype storage/MVCC, metadata, runtime and full suspension first, then build the semantic kernel and durable single-process slice. Qualify shared state, independent local consumer schedules, online lifecycle and eligible partial aggregation/factorization next; then distribute the same contracts. Broader higher-order maintenance, recursion, temporal SQL and adaptive optimization advance independently. Security, bounded resources, deterministic failures and operational simplicity start with the first slice.
+Aim for a small exceptional product: one-binary local quickstart, standard PostgreSQL clients, exact incremental SQL and a qualified durable cloud profile. Use the canonical customer/orders workload to converge on executable behavior; see [implementation start](docs/planning/implementation-start.md). Prototype storage/MVCC, metadata, runtime and full suspension first, then build the semantic kernel and durable single-process slice. Qualify shared state, independent local consumer schedules, online lifecycle and eligible partial aggregation/factorization next; then distribute the same contracts. Broader higher-order maintenance, recursion, temporal SQL and adaptive optimization advance independently. Security, bounded resources, deterministic failures and operational simplicity start with the first slice.
 
 Autonomous coding agents are the primary implementation workforce. Agents take bounded issues through independently verified PRs; humans own direction, safety-critical/architectural approvals and releases. Prefer small vertical slices, reproducible environments, controlled parallelism, and evidence-driven simplification over large generated code changes. See the [agent operating model](docs/design/agent-development.md).
 

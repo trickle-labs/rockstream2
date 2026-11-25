@@ -138,6 +138,8 @@ Checker logic consumes captured input/output, source cuts, process identities, b
 | W13 | Bursty and long-idle workloads, full suspension, concurrent wake and cold reads | Zero-process eligibility, source/timer/sink obligations, activation and catch-up cost, stale-owner rejection |
 | W14 | Shared relations with disjoint checkpoint cadences and fast/slow consumers | Logical MVCC coverage, nonlinear intermediate states, common-cut reconstruction, history amplification and pin quotas |
 
+W1-G in [implementation start](implementation-start.md) is the fixed, synthetic, tiny golden fixture within W1. Independently verify exact outputs at each of its five cuts; extend it through public SQL, crash recovery, sharing and distribution. It is not a measured benchmark or design-partner result. Retain the broad portfolio and generated histories.
+
 These are workload families, not official benchmark compliance claims. Name modified SQL, skipped queries, changed scale factors, and synthetic change generators. Reject a comparison that gives one implementation weaker numeric or durability semantics, smaller retention, or a different output query.
 
 ## 8. Benchmark protocol
@@ -153,6 +155,12 @@ Freshness measurements separate source commit to durable input, durable input to
 Cost uses recorded cloud prices/configuration on the experiment date or an explicitly hypothetical rate card, plus measured resource consumption. Include ingestion/source test infrastructure, metadata operations and any optional consensus replicas, maintenance, serving, compaction, backup, retained history, activation infrastructure, object requests, transfer and headroom. Archive both quantities and prices so cost can be recomputed. Report cost per million unique correct durable changes at fixed freshness, not raw rows processed including replays.
 
 For suspension workloads, report active and dormant durations, actual live Rockstream process count, remaining durable/source costs, wake mechanism and its failure policy, first-correct-read latency, time to the required freshness cut and full cold catch-up cost. Compare against an always-on baseline at the same supported workload and obligations. A continuous CDC profile with a surviving ingest process may demonstrate partial pool suspension, but cannot be labeled full Rockstream scale-to-zero.
+
+### Early feasibility and user experience
+
+Run the G0 full-path latency/resource experiments in [implementation start](implementation-start.md) before promoting SLOs or platforms. Instrument actual metadata/pin paths, storage amplification, runtime and cold activation; record raw end-to-end observations, errors and predeclared workload/decision criteria. G2 measures the prepared local quickstart through authenticated SQL, correct initial view and observed update after required publication wait, with installation and cold starts separate. Capture unsuccessful setup attempts. G3–G6 extend to connectors, cloud profiles and operational diagnosis.
+
+For deletion and decommissioning, exercise drop/retirement racing with valid pins, staged writes and suspended owners; distinguish logical row absence from physical reclamation and backup/external copies. Verify old actors cannot re-expose retired scopes; restore an older backup and require deletion/retirement reconciliation before reopening affected data. Report retained copies, provider versioning/retention locks, failed cleanup and unverified erasure explicitly. Do not remove protected roots to pass a cleanup target.
 
 ## 9. Evidence bundle schema
 

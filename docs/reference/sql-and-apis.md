@@ -27,6 +27,8 @@ Start a minimal versioned machine-readable capability registry in G0/G1; generat
 
 The first type profile includes booleans, fixed-width signed integers, declared decimal precision up to 38, binary-collated text, bytes, date, timestamp/timestamptz, and stable identifiers. Every type/operator combination still needs an entry. Unbounded NUMERIC, locale collations, unsupported casts, float aggregation, and arbitrary UDFs fail closed until their specific capability is admitted. Initial direct tables have declared primary keys for deterministic updates/deletes; connector bag sources may carry duplicates with explicit source identities.
 
+The [implementation-start user journey and golden workload](../planning/implementation-start.md) define the initial authenticated local quickstart and exact observed result, with proposed five-minute usability target. Keep SQL semantics and durability identical to the declared deployment profile; command names remain proposed until exercised.
+
 ## 2. Declarative objects and proposed syntax
 
 The following is illustrative syntax to validate during G0/G2/G3. Names and options are proposed; they are not current commands.

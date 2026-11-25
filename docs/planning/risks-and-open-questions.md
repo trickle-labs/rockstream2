@@ -29,11 +29,17 @@
 | R21 | Agent or dependency consumes untrusted instructions, exposes secrets, or changes policy to gain authority | Least privilege, no production secrets/signing keys, protected policy/checkers, independent approvals, scoped budgets, isolation and denial negative controls | Security + maintainer; G0 onward |
 | R22 | Green fast CI conceals regression debt or background evidence becomes stale | Separate runner capacity, exact-revision evidence, prioritized triage/fix/revert, block affected promotion, track verification backlog and escaped defects | Verification + performance; every gate |
 
+|
+| R23 | Broad feature/platform scope or difficult setup prevents a useful first product | Narrow qualified matrix, partner workload selection, fixed golden fixture, measured local quickstart and explicit unsupported boundaries | Product + maintainer; G0/G2/G6 |
+| R24 | Mandatory metadata/pin, object-store, write or recovery cost makes target SLO/economics infeasible | Instrument actual end-to-end paths and resource denominators in G0; compare equivalent profiles, sound amortization or honest target revision | Storage + performance; G0/G4/G6 |
+| R25 | Logical deletion mistaken for erasure, or backup/old worker re-exposes retired data | Authorized retirement/fencing, retention/copy inventory, GC proof, restore reconciliation and explicit residual copies/blockers | Storage + security + operations; G0 design, G2/G6 qualification |
+
 ## 2. Open choices that need evidence, not another abstract architecture
 
 | Question | Current recommendation | Evidence that can change it |
 | --- | --- | --- |
 | Which execution substrate? | Lean Rockstream-native runtime, reusing suitable existing algorithms and infrastructure; DBSP is the semantic foundation, not a mandatory runtime dependency | ADR 0005 common experiment, especially Timely/Differential, and maintenance assessment can reverse the preference |
+| Which initial platform/backend and agent execution environment? | One Linux server target, one qualified filesystem and object-store profile; GitHub-centered isolated agent pilot | Real provider/conformance measurements, reproducible CI, bounded agent permissions and observed work/review capacity |
 | Which exact SlateDB/datafusion/runtime revisions? | Pin after G0, do not copy the old workspace lockfile automatically | Compatibility, security, license, state-format and lifecycle conformance |
 | Cloud metadata implementation? | In-process kernel with one conditional object root pointing to immutable metadata; evaluate `slatedb-txn-obj` for suitable primitives; no external coordinator required | Provider conformance, atomic condition coverage, ambiguity resolution and domain/head/pin contention experiments; an embedded Raft alternative requires a revised durability/quorum/suspension profile |
 | SlateDB arrangement layout and physical checkpoint cadence? | Group compatible arrangements in partitioned databases; preserve logical bases/deltas separately from physical version identities | Read/reconstruction, retained-history, compaction, request and exact-parent retry costs; no database-per-view assumption or planned custom storage engine |

@@ -174,9 +174,11 @@ The first vertical slice includes authenticated sessions, explicit catalog owner
 
 Initial isolation uses tenant/database roles and object grants. Row-level security and arbitrary policy predicates are later capabilities because they affect shared expression identities, subscriptions and cache invalidation. Until qualified, tenants requiring finer isolation use separate objects or deployments. Control/admin privileges are distinct from query privileges. Audit records include actor, request, affected catalog identities, result, incarnation and commit reference without raw credentials or row payloads.
 
+Decommissioning and deletion follow the authoritative lifecycle and retention rules in [consistency and storage](consistency-and-storage.md). Distinguish revoked access, logical retirement and verified physical reclamation; expose outstanding pins, history, backups, source/sink obligations, provider retention and failed cleanup. No ordinary administrative command may bypass fences or protected roots. Restore reconciles newer applicable retirement/access decisions before reopening affected data.
+
 ## 8. Observability and user-facing diagnosis
 
-Provide system tables for domains, views, plans, dependencies, arrangements, partitions, leases, source offsets, active pins, subscriptions, budgets, publications, builds and recovery jobs. Expose independent durable-input, computed and published uppers, and source lineage. All phase labels correspond to real durable or runtime boundaries.
+Provide system tables for domains, views, plans, dependencies, arrangements, partitions, leases, source offsets, active pins, subscriptions, budgets, publications, builds and recovery jobs. Expose deployment/profile, retention and decommission status with clear blockers. The [implementation-start user journey](../planning/implementation-start.md) establishes the one-binary quickstart and diagnostic acceptance from G2. Expose independent durable-input, computed and published uppers, and source lineage. All phase labels correspond to real durable or runtime boundaries.
 
 Freshness diagnosis should answer: which dependency is blocking; what input age and backlog it carries; whether the bottleneck is source, schedule, compute, exchange, staging, metadata or delivery; and which intervention is supported. A sink lag must not be displayed as a materialization lag.
 
