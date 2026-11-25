@@ -13,15 +13,17 @@ The capability registry must eventually generate both documentation and executab
 | Semantic interpreter and typed algebra | G1 | Weighted bag laws, exact numeric/reference semantics, relational primitives; no product availability claim. |
 | PostgreSQL wire, direct writes, reads | G2 | Documented clients, simple/extended query paths, parameter binding, cancellation, typed results, same-domain atomic input transactions. |
 | Foundational maintained SQL | G2 | Projection, deterministic expressions, filters, inner equi-joins, `UNION ALL`, grouped COUNT/SUM/AVG and delete-safe MIN/MAX over qualified types. |
-| Catalog, shared graph, lifecycle | G3 | View dependencies, online backfill/replacement, shared indexes, historical snapshot tokens, resumable subscriptions. |
+| Catalog, shared graph, lifecycle | G3 | View dependencies, online backfill/replacement, shared indexes, exact logical history, local independent consuming groups and resumable subscriptions. |
 | PostgreSQL CDC and Kafka sources | G3 | Qualified snapshot/stream handoff, transaction/cursor identity, recovery, schema handling, and source retention contracts. |
 | Distributed execution and serving | G4 | Fenced partitions, consistent publication, independent serving, explicitly imported cross-domain relations. |
 | Outer/semi/anti joins, distinct, subqueries | G5 feature gates | NULL-aware semantics, retractions, decorrelation and resource contracts; promote useful subsets independently. |
 | Top-K, ordered windows, nested types | G5 feature gates | Deterministic ordering, delete refill, bounded admission; arrays/JSON have explicit equality and serialization rules. |
 | Temporal predicates and recursion | G5 feature gates | Explicit clock input, lateness/finalization policy, restricted recursive fragment and qualified deletion semantics. |
-| Factorization, higher-order IVM, adaptive plans | G5 feature gates | Shape-specific qualification with semantic baseline and measured benefit. |
+| Eligible partial aggregation/factorization | G0 experiment, G3 qualification | Selected join-aggregate shapes with the first-order semantic baseline and measured workload benefit. |
+| Higher-order IVM, broader factorization, adaptive plans | G5 feature gates | Further shape-specific qualification; no automatic capability from an internal operator. |
 | Kafka sink and additional protocols | G3/G4 adapter gates | Qualify external delivery separately; sink availability is not implied by source support. Arrow Flight SQL is a later serving adapter. |
-| Elastic maintenance and production release | G6 | Qualified workload envelope, operational/security gates, bounded pause/resume and recovery. G5 research does not all have to finish first. |
+| Suspension and activation | G0 experiment, G2–G4 implementation | Durable single-process stop/resume, shared-consumer retention, then distributed drain and fenced concurrent wake. |
+| Elastic maintenance and production release | G6 | Qualified workload envelope, operational/security gates and measured idle/wake economics. G5 research does not all have to finish first. |
 
 The first type profile includes booleans, fixed-width signed integers, declared decimal precision up to 38, binary-collated text, bytes, date, timestamp/timestamptz, and stable identifiers. Every type/operator combination still needs an entry. Unbounded NUMERIC, locale collations, unsupported casts, float aggregation, and arbitrary UDFs fail closed until their specific capability is admitted. Initial direct tables have declared primary keys for deterministic updates/deletes; connector bag sources may carry duplicates with explicit source identities.
 
@@ -48,6 +50,8 @@ AS SELECT customer_id, COUNT(*) AS order_count, SUM(amount) AS total
 
 CREATE INDEX spend_lookup ON spend_by_customer (customer_id);
 ```
+
+`maintenance` selects continuous, freshness-batched, scheduled or on-demand work; exact syntax and defaults remain to be qualified. A policy does not change the query result or authorize gaps in source transactions.
 
 `freshness_target` is an admission/scheduling objective, measured over a specified qualified workload; it is not an unconditional guarantee for every query. `history_retention` is a minimum history policy within an admitted budget. The system may refuse creation or pause ingestion/maintenance according to the declared failure policy if it cannot satisfy that policy; it never silently expires promised history or weakens durability. The default durability contract is strict. A later fast durability tier must be a separately qualified deployment capability with its own recovery references.
 
@@ -92,13 +96,13 @@ WriteToken = {
 
 SnapshotToken = {
   tenant_id, database_id, run_incarnation, catalog_revision,
-  domain_versions, published_exclusive_uppers,
+  logical_read_cuts, published_history_roots, published_exclusive_uppers,
   source_cut, relation_generations, semantic_versions,
-  retention_lease_id, token_format_version, integrity_tag
+  retention_pin_id, pin_generation, token_format_version, integrity_tag
 }
 ```
 
-Visibility of a write assigned epoch `e` requires its target domain's published upper to exceed `e`, plus the requested dependency/source-cut checks. Token signatures prevent tampering but do not grant access; current authorization is checked on every operation. Restore creates a new `RunIncarnation` and rejects all prior write, snapshot, and subscription tokens in the initial release, avoiding accidental collision of reused epoch numbers. Any future token remapping requires its own qualified protocol.
+Within the write token's own domain/time lineage, visibility of a write assigned epoch `e` requires a durable published upper greater than `e`, plus the requested dependency checks. A consuming result domain instead proves inclusion of that transaction through its certified source-cut/import lineage; its local epoch must never be compared numerically with the ingestion epoch. Token signatures prevent tampering but do not grant access; current authorization is checked on every operation. Restore creates a new `RunIncarnation` and rejects all prior write, snapshot, and subscription tokens in the initial release, avoiding accidental collision of reused epoch numbers. Any future token remapping requires its own qualified protocol.
 
 Direct clients register a `ClientGeneration` and send `(client_id, signed_client_generation, sequence)` for every mutation. The generation is server-issued and scoped to run incarnation, tenant/database, domain, and operation stream; catalog operations use a separate catalog stream. The sequence is monotonic within a bounded admitted window. Durable admission records preserve generation validity, low/high watermarks, admitted gaps, payload digests, and recent result mappings. A sequence below the replay floor or an expired/unknown generation returns `RS_IDEMPOTENCY_EXPIRED` and requires reconciliation or explicit new registration. It is never interpreted as a new request. Optional arbitrary client labels cannot replace this identity: once a string has been completely forgotten, a server cannot distinguish its retry from a never-used string.
 
@@ -114,15 +118,20 @@ Every query binds one pinned catalog revision and one compatible snapshot token 
 
 | Policy | Contract |
 | --- | --- |
-| Latest committed | Choose the newest compatible published cut available to that serving path; return the actual token and progress. A replica may lag the authoritative head. |
+| Latest committed | Resolve authoritative published heads at one metadata selection point and choose the newest compatible certified cut; load it or wait/fail, rather than silently return a lagging replica. |
+| Allowed stale | Only when explicitly requested, choose an older compatible certified cut available to the serving path and return its actual token/progress; no freshness bound is implied. |
 | Bounded staleness | Require explicit freshness metrics within the bound, waiting until deadline or returning an error; unavailable source-freshness information is not success. |
 | Read your writes | Wait until the target dependency closure includes the `WriteToken`; reject unrelated/incompatible tokens. |
-| Historical | Read an exact retained `SnapshotToken`; fail if its required history or incarnation is unavailable. |
-| Repeatable snapshot | Pin one token for the lifetime of a bounded read-only transaction, with an expiring renewable lease. |
+| Historical | Read the exact logical cut and protected roots in a retained `SnapshotToken`; a physical checkpoint at that same cut is unnecessary if certified history reconstructs it. Fail if history/incarnation is unavailable. |
+| Repeatable snapshot | Pin one token for a bounded read-only transaction, with durable renewal/revocation state and explicit expiry behavior. |
 
 Freshness has separate dimensions: source-observation lag, durable-ingestion lag, and published-result lag. An idle source can show no pending durable changes while its upstream availability is unknown. Report `unknown` rather than zero in that case. Wall-clock `AS OF TIMESTAMP` is a later convenience requiring a declared mapping to recorded domain publication times; it is not part of G3's exact-token guarantee and does not reconstruct a universal real-world snapshot.
 
-Queries over multiple same-domain views use one common published version/cut. Across domains, arbitrary independently latest results are not silently joined. G4's initial supported path imports a published versioned relation/change stream as an explicit input to a consuming domain, preserving its source/dependency cut. The consumer can publish only a compatible input cut: dependencies sharing an upstream source must agree on the represented source prefix, with causal/dependency closure checked. Retained earlier versions may be selected when compatible.
+Queries over multiple views in one atomic publication group use one common logical cut. G3 qualifies local independently scheduled result groups consuming common durable input/history. General cross-domain dependencies in G4 import a published versioned relation/change stream into a consuming domain, preserving its source/dependency cut. Dependencies sharing an upstream source must agree on its complete represented prefix and causal/transaction closure. Independent latest values are never silently joined.
+
+Logical MVCC advertises an inclusive earliest retained cut `S`, a durable published exclusive upper `Cp`, and supported cut coverage. A read at `C` includes input epochs `e < C`; normally `S <= C <= Cp` is eligible. The computed upper is distinct and cannot authorize a read. Certified base/deltas may reconstruct an earlier common cut even when the views used different physical checkpoint schedules. Metadata atomically pins the selected logical cuts and their exact backing roots. Gaps and expired history return explicit errors, and domain epoch numbers cannot be compared across unrelated timelines.
+
+Readers validate durable pin authorization after reading required bytes and before reporting a successful result or completed stream unit. Cancellation releases a pin; uncertain renewal or authoritative revocation prevents successful completion under it. Policy expiry is enforced through metadata, not by allowing a storage cleaner to delete still-protected roots. Any later lease-based shortcut needs the separate clock/GC proof required by the consistency specification.
 
 If the planner cannot construct that cut, it waits, requests explicit import/rebuild, or rejects the query. Distinct independent sources have no global external transaction order; the snapshot records each source's represented prefix without claiming a transaction that those systems never coordinated. Domain-local epoch numbers must never be compared to manufacture consistency.
 
@@ -156,7 +165,13 @@ View creation does not expose a partially populated result. Replacement keeps th
 
 The versioned control API contains operations for catalog inspection, idempotent mutation, operation status/cancellation, snapshot acquisition/release, publication waiting, lease renewal, source pause/resume, and administrative recovery. Read-only query traffic and administrative mutation have separate authorization scopes. PostgreSQL wire and future Arrow Flight SQL adapters call the same service contracts; they cannot bypass capability checks or publication rules.
 
-System relations should include `relations`, `domains`, `source_progress`, `view_progress`, `arrangements`, `retention_pins`, `operations`, `leases`, `query_costs`, and `delivery_cursors`. Each reports actual versus target state and units. `EXPLAIN INCREMENTAL` shows maintained state, sharing, expected fanout, resource bounds, semantics, and uncertainty. Proposed `SHOW FRESHNESS FOR view` identifies source, queue, compute, exchange, persistence, publication, and delivery contributions; it does not sum overlapping intervals as if they were sequential.
+System relations should include `relations`, `domains`, `source_progress`, `view_progress`, `arrangements`, `retention_pins`, `operations`, `leases`, `query_costs`, `delivery_cursors` and `deployment_lifecycle`. Each reports actual versus target state and units, including computed versus published uppers, supported logical history, consumer cursors, sleep eligibility/blockers, activation status and cold-start/catch-up cost. `EXPLAIN INCREMENTAL` shows maintained state, sharing, expected fanout, resource bounds, semantics, and uncertainty. Proposed `SHOW FRESHNESS FOR view` identifies source, queue, compute, exchange, persistence, publication, and delivery contributions; it does not sum overlapping intervals as if they were sequential.
+
+### Suspension and user-visible availability
+
+Single-process cloud operation needs only the binary and a qualified object store. Full suspension is permitted only after durable input, metadata, history, source/timer and delivery obligations are accounted for. Stopping serving alone and stopping every Rockstream process are different lifecycle states. An idle deployment still incurs storage cost, and a first request after activation may wait for recovery and catch-up within its deadline.
+
+A completely stopped binary has no listening endpoint. Manual restart or a configured optional platform/router/event/schedule supplies activation. Continuous CDC or tight freshness may require ingestion to remain active; a source-retention gap requires visible rebootstrap, not silent catch-up. The control API reports blockers and the durable lifecycle operation before stopping. No Kubernetes, external catalog or coordinator is required. Exact commands are deferred until the lifecycle is qualified.
 
 | Application error | Typical SQLSTATE mapping | Client action |
 | --- | --- | --- |

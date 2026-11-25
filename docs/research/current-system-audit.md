@@ -34,11 +34,14 @@ implementation evidence. [A03]
 | Factorized maintenance | `FactorizedJoinCore`, join-aggregate and star-join implementations, plus plan classification | Reuse algorithms and adversarial inputs after semantic review; general workload optimization remains a separate engineering task. |
 | Verification | FizzBee coordination models, Verus production-kernel contracts, deterministic simulation and oracle suites | Carry forward invariants and failure scenarios; update proofs for the new protocol rather than claiming they transfer automatically. |
 | Qualification discipline | Independent scale-qualification contract with negative controls and provenance requirements | Preserve this standard for every speed, cost, scale, or recovery claim. |
+| Simple deployment and embedded election | One executable supports local operation; control code implements leader election with durable term/vote state | Preserve a small operational footprint, while separately qualifying the new metadata protocol and suspension lifecycle. |
 
 The architectural and implementation entry points supporting this inventory are
 the workspace map [A02], storage commit path [A04], frontier implementation [A05],
 arrangement identity/catalog/trace [A06], [A07], [A08], factorized operators [A09],
 verification instructions [A10], [A11], and qualification contract [A12].
+The deployment and election entry points are the README [A16] and control election
+module [A17].
 
 ### Progress is more nuanced than a single global counter
 
@@ -89,16 +92,39 @@ protocol does not prove a new manifest-publication protocol. A batch oracle that
 shares the new compiler's lowering code cannot independently catch a lowering
 bug; retain an independent SQL engine for supported overlap.
 
+### Existing election is not a replicated metadata log
+
+The inspected `raft.rs` module implements `RequestVote` leader election,
+heartbeats and a majority-backed leadership lease. It persists `current_term`
+and `voted_for` through an object-store-backed record before the authority
+transition is used. Its documented model scope is control-plane election. It
+does not implement replication of catalog/publication commands as a Raft log.
+This is a useful source of fencing and failure scenarios, but not a complete
+metadata consensus implementation to transplant into Rockstream 2. [A17]
+
+The reviewed README provides a single-host launch path, and architecture/design
+documents describe object-backed storage and independently assignable process
+roles. These support the operational direction. This review did not establish a
+qualified workflow that suspends every process, preserves all source and sink
+obligations, and automatically reactivates from an external request. Existing
+autoscaling signals and reconstructible workers are insufficient evidence for
+that stronger claim. Rockstream 2 therefore treats full hibernation, concurrent
+wake-up, disposable local state and retained-history budgets as explicit early
+qualification requirements. [A02], [A16]
+
 ## 3. Public capability baseline
 
-The following is an inventory of the existing contract, not a Rockstream 2
-promise. `Core`, `Maintain`, and `Experimental` are the current repository's own
-classifications. Scope and failure semantics matter as much as the label.
-[A03], [A14]
+The following records the generated capability matrix, not a Rockstream 2
+promise or an executed qualification result. `Core`, `Maintain`, and
+`Experimental` are the current repository's own classifications. The README
+calls that matrix authoritative, but some of its own descriptions conflict with
+the matrix. Scope and failure semantics matter as much as the label. [A03],
+[A14], [A16]
 
-| Capability family | Current documented status | Successor requirement |
+| Capability family | Generated matrix / language-document status | Successor requirement |
 | --- | --- | --- |
-| PostgreSQL CDC and Kafka sources; Kafka sink | Core | Preserve transaction/offset handling, source acknowledgment boundaries and integration tests. |
+| PostgreSQL CDC and Kafka sources | Core | Preserve transaction/offset handling, source acknowledgment boundaries and integration tests. |
+| Kafka sink | Core in the matrix; Experimental in the README | Resolve the public delivery contract with exact runtime-path evidence before declaring migration parity. |
 | Direct DML, materialized views, exact integer/decimal aggregation | Core | Inventory supported shapes and numeric behavior; preserve exact results and explicit failure behavior. |
 | Integer-key equi-joins | Core, including documented inner and outer forms | Do not present outer joins as wholly new; expand coverage only with semantic and deletion tests. |
 | Text-key joins and text `MIN`/`MAX` | Maintain, binary UTF-8 semantics | Record collation explicitly in schema, keys, sharing identity and migration checks. |
@@ -113,6 +139,16 @@ classifications. Scope and failure semantics matter as much as the label.
 | View replacement and lifecycle visibility | Experimental but SQL-reachable | Promote only after atomic cutover, catch-up, failure and dependency tests. |
 | Freshness fences and transaction controls | Core, with existing explicit idempotency/source-epoch rules | Provide a documented compatibility mapping; do not reuse old tokens as new tokens. |
 
+**Observed documentation conflicts:** the README groups aggregates, joins,
+window/time operators and bounded Kafka view delivery under Experimental, while
+the matrix identifies specific forms as Core or Maintain. The README also lists
+`ORDER BY`/`LIMIT` among frontend gaps, whereas the matrix names a Core SQL path
+and a regression test. This audit preserves that discrepancy instead of
+silently promoting the broad feature families to production support. Migration
+must verify each required query shape, connector delivery mode and failure
+case against the pinned engine through the public API; a feature label or named
+test alone is insufficient. [A03], [A16]
+
 The project's focus document deliberately narrowed supported external connectors
 to PostgreSQL CDC and Kafka sources and a Kafka sink. Removed lakehouse/webhook
 connectors are not hidden migration prerequisites. Internal object storage was
@@ -126,11 +162,13 @@ interfaces. [A15]
 | SQL/wire transcripts and connector fixtures | Reuse as inputs and expected behavior where the new contract agrees | Run through the new public SQL/API path, including errors and reconnects. |
 | Z-set arithmetic and codecs | Review and adapt small modules with provenance | Property tests, overflow tests and canonical encoding compatibility decisions. |
 | Specialized factorized operators | Port only after mapping to the new IR semantics | Batch equivalence under duplicates, deletions, NULLs, dimension changes and overflow. |
+| Arrow/Tokio execution patterns and DataFusion integration | Selectively adapt into the preferred lean Rockstream-native runtime | Compare the same durable workload and lifecycle against Timely/Differential; preference is not a measured advantage. |
 | Formal models and verified kernels | Reuse obligations and proof techniques; revise models | New protocol-state mapping and proof coverage ledger. |
 | Qualification harness | Adapt workload generation, independent checking and evidence schema | Checker detects intentionally dropped/duplicated rows, stale-owner writes and faults that never fired. |
 | Catalog, shard runtime and epoch publication | Redesign around immutable versions and explicit domain contracts | Atomicity, fencing, closure, replay, GC and lifecycle model tests. |
 | Existing on-disk arrangement/checkpoint layout | Treat as an import/export boundary | A separate versioned migration tool if direct import is later justified. |
 | Deployment and operational patterns | Reuse concepts, not unverified manifest copies | Restore drills, identity isolation and load qualification in the intended environment. |
+| Control election machinery | Reuse failure cases; do not copy a partial consensus implementation as the metadata kernel | Qualify one atomic object-backed metadata root first; use an established Raft library only if evidence justifies the additional operating contract. |
 
 Retain upstream attribution and applicable license notices when porting code or
 tests. Do not carry historical compatibility paths into the new kernel merely
@@ -173,3 +211,5 @@ All repository links below are pinned to the reviewed commit.
 [A13]: https://github.com/trickle-labs/rockstream/tree/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-sim/src
 [A14]: https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/docs/language-features.md
 [A15]: https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/ROCKSTREAM_PROJECT_FOCUS.md
+[A16]: https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/README.md
+[A17]: https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-control/src/raft.rs

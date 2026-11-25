@@ -6,9 +6,13 @@
 
 Use deterministic environment interfaces, independent batch comparison, protocol models, crash injection, real connector tests and selected machine-verified kernels from the first implementation slice. Preserve a small production correctness boundary: canonical semantics, durable admission, completeness/progress validation, publication/fencing, and pin/GC rules.
 
-Deliver G0 experiments, G1 semantics, G2 durable single-node operation, G3 sharing/lifecycle, G4 distribution and G6 production qualification. G5 advanced features graduate independently. Do not postpone failure testing or security until the final phase. Do not create a separate simplified simulator execution algorithm that can pass while production fails.
+Deliver G0 experiments, G1 semantics, G2 durable single-node operation, G3 sharing/lifecycle, G4 distribution and G6 production qualification. G5 advanced features graduate independently. Qualify suspension from the beginning: G0 feasibility, G2 single-process stop/resume from durable roots, G3 retained shared-consumer obligations, G4 distributed drain/fencing and concurrent activation, then G6 operational hardening. Eligible partial aggregation/factorization also starts with G0 experiments and a measured G3 core; general higher-order maintenance remains separately gated. Do not postpone failure testing or security until the final phase. Do not create a separate simplified simulator execution algorithm that can pass while production fails.
 
 Require measured-execution provenance and negative controls for release claims. Exact output checking includes row identity/weights, not only totals or latency. Distinguish model bounds, verified kernel properties, finite tests and deployed failure assumptions. Performance claims compare equivalent semantics and total infrastructure cost at a fixed SLO.
+
+The native-runtime and SlateDB preferences are working decisions to validate, not benchmark conclusions. Compare the native prototype seriously with Timely/Differential; test logical MVCC on SlateDB independently of physical checkpoint cadence. For metadata, exercise one-root atomic transitions, backend-specific conditional writes, ambiguous outcomes, stale ownership and pin/GC races. A single conditional object write does not prove a transaction over independent objects.
+
+An eligible scale-to-zero claim requires an observed interval with no Rockstream process running, followed by exact recovery with no cloud-profile local authority surviving. Record the manual/platform activation mechanism, source/history headroom, timer/sink obligations, cold latency and total cost. Partial pool suspension and full hibernation are distinct claims. No executable qualification has been performed for this design PR.
 
 ## Alternatives and consequences
 

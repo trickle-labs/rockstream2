@@ -8,9 +8,9 @@ This specification defines the safety boundary shared by ingestion, incremental 
 
 A published version is an immutable, durable description of a complete result at a declared input cut. It remains correct if every maintenance and serving process disappears. An accepted input is recoverable independently of whether its consequences have finished computing. A prepared worker result is invisible until the metadata kernel publishes it.
 
-The cloud failure model covers process crashes, lost responses, message duplication and reordering, network partitions, disposable disk loss, and one availability-zone failure, provided the configured object service and a metadata quorum preserve their acknowledged data. It assumes authenticated, non-Byzantine components and detects corrupted bytes through checksums. It does not promise availability during loss of metadata quorum, recovery from destruction of all authoritative copies, or zero data loss after restoring an older asynchronous disaster-recovery backup.
+The cloud failure model covers process crashes, lost responses, message duplication and reordering, network partitions, disposable disk loss, and an availability-zone failure within the selected object service's qualified durability envelope. All authoritative input, data, catalog, publication, deduplication, ownership and retention metadata reside in that object service. Rockstream requires its qualified conditional-update and consistency semantics; it does not require an external coordination service. The model assumes authenticated, non-Byzantine components and detects corrupted bytes through checksums. It does not promise availability when the metadata root or required objects are unavailable, recovery from destruction of all authoritative copies, or zero data loss after restoring an older asynchronous backup.
 
-The same state machine runs in an embedded deployment, but a local metadata database and local object directory have a different fault envelope. A laptop restart is recoverable; destruction of its only disk is not. Cloud compute is disposable because both authoritative storage services survive outside that compute fleet.
+The same logical state machine runs in an embedded deployment against a qualified local filesystem adapter with exclusive process ownership and durable root updates. A laptop restart is recoverable; destruction of its only disk is not. Cloud RAM, local disks and every Rockstream process may disappear without losing acknowledged state. That is a recovery guarantee, not a promise that a sleeping deployment can receive requests without an external launcher or platform activation path.
 
 The safety invariants are:
 
@@ -44,7 +44,7 @@ An upper frontier is **exclusive**: `U = 43` means all work at epochs `t < 43` i
 | `VersionId` | Unique immutable publication record; never inferred from wall time or object listing order. |
 | `PlanRevision`, `OwnershipGeneration` | Execution and placement identities validated at publication. |
 | `AttemptId` | Unique execution attempt for an unpublished interval; never reused after abandonment. |
-| `SnapshotToken` | Run identity, catalog revision, domain/version bindings, source cut, schema/semantic versions, and a retention pin. |
+| `SnapshotToken` | Run identity, catalog revision, logical read cuts, protected publication/arrangement roots, source cut, schema/semantic versions, and a retention pin. |
 
 Epoch numbers from different domains are incomparable. Comparing sales epoch `100` to fraud epoch `99` says nothing about freshness or causal order. Source positions also need typed comparators: PostgreSQL log positions, Kafka partition offsets, and direct-input sequences are not interchangeable integers.
 
@@ -52,11 +52,31 @@ Expose accepted, input-durable, computed, published, retained-history, and deliv
 
 A domain's input sequencer durably assigns complete transactions to epochs and seals intervals `[L,U)`. Several transactions can share an epoch, but no transaction is split across published intervals. Large transactions may spill while assembling; they become admissible only after their end marker and all fragments are present. Empty intervals can advance progress only when their input completeness is established.
 
+### 2.1 Logical MVCC and supported cuts
+
+Logical MVCC is a core arrangement and relation contract. It lets readers and downstream maintenance choose an exact retained cut while another consumer progresses. It does not add general OLTP transaction isolation or make ownership and publication atomic by itself. [ADR 0009](../adr/0009-logical-mvcc.md) records this choice.
+
+Use **cut** `C` for the state containing epochs `e < C`. Every advertised relation/arrangement history records a computed upper `Cc`, a durable published upper `Cp`, an inclusive earliest reconstructible cut `S` (the logical `since` boundary), and exact cut coverage. Normally all cuts `S <= C <= Cp` are available; `Cp <= Cc`. At genesis, `S = Cp = 0` and the relation is `Q(empty)`. Epoch `e` is visible only when `Cp > e`. Metadata revisions, backend sequence numbers, physical checkpoint IDs and wall-clock timestamps are separate identities.
+
+One valid representation is a durable base `R(S)` plus timestamped output deltas `ΔR(e)` for `S <= e < Cp`:
+
+```text
+R(C) = R(S) + sum(ΔR(e) for S <= e < C),  S <= C <= Cp
+```
+
+Records carry relation/arrangement identity, logical epoch, row/key and signed weight under a versioned encoding. The read descriptor selects the authoritative records and their physical roots; a timestamp filter over an uncommitted writer is not a snapshot protocol. Every advertised cut also has a protected boundary-indexed mapping to source positions/incarnations, transaction/import dependency closure and applicable schema/semantics. The mapping may be compressed, but logical compaction must preserve it for all supported cuts even after input segments are removed. Reconstructible rows alone cannot certify cross-domain compatibility. Stateful operators also retain the recovery state or exact reconstruction recipe needed at their own published boundary. A result trace alone is not necessarily sufficient to rebuild internal operator state cheaply.
+
+Physical checkpoints protect the bytes used by this representation; they need not exist at every logical cut. A checkpoint at `Cp = 100` can serve cut `80` if its protected base and deltas actually reconstruct `80`. Publishing one batch `[L,U)` may make several logical cuts available at once, but it must preserve the results at each promised cut. For nonlinear operators such as DISTINCT, outer joins and MIN/MAX, netting all input changes across that interval can erase an intermediate result. The baseline evaluates complete epochs and retains their timestamped output; coarser evaluation is allowed only with a proof or a narrower explicitly declared cut-coverage contract. Correctness and initial `Q(empty)` still apply at every advertised cut.
+
+Published coverage is certified by a committed descriptor. Merely retaining raw input does not make an old cut immediately queryable: replay requires the matching semantics, schema, plans and dependencies, and may be an explicit rebuild operation. Repair that bypasses an invalid intermediate snapshot records a coverage gap. A cut selector checks coverage as well as `[S,Cp]`; it never silently fills a gap or substitutes a nearby snapshot.
+
+Consumers keep independent durable cursors, requested freshness and retention obligations. Shared producers can advance without waiting for every consumer to publish. A slow consumer can hold back logical compaction and consume storage; quotas, isolation into another copy, or an explicit expired-cursor/resnapshot outcome bound that cost. Physical sharing does not combine publication groups or impose a global barrier. A transaction is still all-or-nothing within its declared group.
+
 ## 3. Durable ingestion and acknowledgements
 
 The authoritative input log contains normalized changes, source provenance, transaction boundaries, schema identifiers, input identity, and the epoch assignment. Raw source payloads may be retained separately for diagnosis, with access controls and an explicit retention policy. Parsing or schema failures stop the affected source or enter a declared quarantine workflow; silently omitting a record is not the default.
 
-Initial cloud ingestion writes immutable log segments to object storage. A segment header includes format version, source and run identities, epoch interval, per-source position ranges, row/transaction counts, byte length, and checksums. Multipart uploads are not accepted as durable segments until completion succeeds. A small metadata transaction records their manifest root, advances the accepted input head, and records deduplication progress. It compares the expected input head, source incarnation, connector ownership generation, schema/catalog revision, and active ingestion lease, so a stale source reader cannot accept input after reassignment or rebootstrap. Only then may Rockstream acknowledge the durable input or acknowledge source progress upstream.
+Initial cloud ingestion writes immutable log segments to object storage. A segment header includes format version, source and run identities, epoch interval, per-source position ranges, row/transaction counts, byte length, and checksums. Multipart uploads are not accepted as durable segments until completion succeeds. A small metadata transaction records their manifest root, advances the accepted input head, and records deduplication progress. It compares the expected input head, source incarnation, connector ownership generation, schema/catalog revision, and current ingestion authorization, so a stale source reader cannot accept input after reassignment or rebootstrap. Only then may Rockstream acknowledge the durable input or acknowledge source progress upstream.
 
 Direct-write validation uses a serialized admission index at the **durable accepted-input head**, including previously accepted transactions whose views are not yet published. Validate key uniqueness, before-images, expected versions, and constraints there, normalize the SQL operation once, and replay those normalized effects. The index is either durable with that head or reconstructible from its protected source checkpoint and accepted log; recovery restores it before admitting further writes. Validating against only the last published view could admit conflicting updates while maintenance is behind.
 
@@ -77,61 +97,84 @@ Durable admission does not guarantee that every future view computation will suc
 
 ## 4. The metadata kernel
 
-The proposed cloud reference backend is a three-voter etcd deployment across three availability zones. Use linearizable reads and atomic compare-and-write transactions for publication, ownership, retention pins, and catalog transitions. Watches accelerate notification but are not evidence that a current ownership or visibility decision is valid. etcd documents durable, strictly serializable KV operations and weaker watch timing; the adapter must preserve that distinction. [S1]
+### 4.1 One atomic metadata root on object storage
 
-The proposed embedded backend is SQLite using WAL mode, `synchronous=FULL`, one serialized metadata writer, and a filesystem whose durability behavior is qualified. SQLite documents the durability difference between `FULL` and `NORMAL` in WAL mode. Embedded operation offers the same transaction semantics through `MetaStore`, not the same distributed availability. [S3]
+The default cloud deployment is the Rockstream binary plus a qualified object store. The metadata kernel is an in-process library. It requires no etcd, ZooKeeper, Redis or external SQL catalog, and no dedicated process that must stay alive during full suspension. Eligible Rockstream processes may coordinate active work; they recover authority from storage rather than from a privileged machine's memory.
 
-The metadata kernel stores small pointers and state transitions:
+Start with **one logical, conditionally updated metadata root per installation**. The bounded root identifies a monotonically increasing metadata revision, run incarnation, allocation generation and immutable metadata-tree root. Catalog, domain heads, ownership, pins, intents, operation outcomes and lifecycle records live in that tree. Immutable pages are prepared durably before the conditional root update. A successful expected-version root transition atomically selects the new tree and is the linearization point for its logical transaction. It may update several records together without a multi-object transaction in the object service.
+
+The storage primitive must provide a linearizable read of the current root and a durable conditional transition from an expected revision. AWS S3 documents conditional object writes; other services and S3-compatible implementations require their own qualification. An ETag is an opaque condition token, not necessarily a content hash. Unconditional last-writer-wins overwrites, a successful object upload, or an eventually consistent root listing do not implement this contract. [S1]
+
+Evaluate reuse of `slatedb-txn-obj` before writing this primitive. Its transactional object and optional epoch fencing concern **one logical object**. Its object-store protocol can use a sequence of versioned objects rather than overwriting one physical key. Rockstream must verify the chosen protocol's conditional-create, current-version discovery, deletion-boundary and error semantics. It does not provide automatic multi-record catalog transactions, ownership leases or the pin/GC protocol. Grouping the required records beneath one authoritative root is Rockstream's design responsibility. The root abstraction does not mandate one physical object layout. [S2]
+
+The embedded profile uses the same logical root transitions on a qualified local filesystem, with an exclusive process lock and durable recovery of acknowledged changes. Its adapter must explicitly implement the required compare-and-update/durability behavior; ordinary rename alone is not a multi-process CAS. Embedded libraries may supply that implementation, but they add no separately operated service. Local storage has the failure envelope described in section 1.
+
+### 4.2 Atomic predicates, contention and failures
 
 | Record | Essential fields |
 | --- | --- |
 | Domain | Input head, publication head, plan/catalog revisions, ownership generation, status. |
-| Publication | Parent/version identity, root digest, upper, source-cut digest, semantic/storage format versions. |
-| Ownership | Immutable assignment-map root, generation, publisher identity, lease identity. |
+| Publication | Parent/version identity, root digest, upper, supported cut coverage, source-cut digest, semantic/storage format versions. |
+| Ownership | Immutable assignment-map root, generation, authorized publisher identity, scheduling heartbeat. |
 | Staging intent | Attempt identity, expected parent/generation, protected bases, allocation namespace, lifecycle state. |
-| Pin | Root/version, owner, purpose, lease or explicit lifetime, restore incarnation. |
-| Restore/backup | Backup identity, retained roots, metadata snapshot revision, completion state. |
+| Pin | Protected roots and logical cut/range, owner, purpose, revocation/renewal generation, explicit retention policy, run incarnation. |
+| Restore/backup/lifecycle | Retained roots, metadata revision, completion state, suspension or activation generation. |
 
-Bulk input cuts, per-partition descriptors, schemas, and large manifests are immutable objects with authenticated digests. The final publication transaction is bounded in size; it does not contain thousands of partition receipts. This matters because etcd is designed for small metadata requests and has explicit request and database limits. [S2]
+**All predicates that jointly authorize a transition are checked against the same root revision.** For publication these include expected parent, run, catalog/plan, ownership generation, publisher identity and sealed intent. For retention they include version eligibility, existing references/pins and retirement state. Checking a fence in one object and updating a publication pointer in another does not provide atomic fencing. A failed CAS refreshes the root and revalidates every predicate; it cannot blindly replay a mutation calculated from stale state.
 
-One publication coordinator validates the complete receipt set outside the transaction and creates a sealed preparation record containing its root digest and coverage proof. That record is valid only for a fixed parent, plan, membership generation, and intent. The transaction compares those identities before moving the head. A digest establishes content identity, not mathematical correctness: validation code must traverse the expected partition set and reject duplicates, gaps, mismatched intervals, or foreign receipts.
+The root write is small, but the tree, reads, conflicts and serialized transition rate still cost requests and latency. Batch compatible metadata mutations, share in-process caches and route active coordination deliberately. Notifications and caches cannot authorize a commit or pin. Measure root contention, pin churn, admission and publication together under thousands of views. One root is a first implementation constraint, not an assertion of unbounded scale. Independent groups need not wait for one another's computation; they do share this metadata serialization point.
 
-The initial safety simplification is one `OwnershipGeneration` per domain. Any reassignment changes it, invalidating all prepares made against the old membership. This may cause recomputation during frequent rebalancing but makes the final fence check constant-sized. Finer-grained generation validation is a later optimization with its own proof and scale gate.
+An unknown write outcome is reconciled by stable operation/attempt identity recorded in the selected tree. A timeout is neither evidence of failure nor permission to repeat a non-idempotent effect. Bootstrap uses conditional creation and a unique installation identity; concurrent bootstrap/activation must converge on the existing root rather than create separate authoritative histories. Metadata revision and ownership counters never wrap or get reused. Loss of access stops new authoritative transitions and GC; it must not elect an unfenced local authority.
+
+Large source cuts, schemas and partition receipts are immutable objects referenced by authenticated digests. A publication coordinator validates the full expected receipt set and creates a sealed preparation record tied to a fixed parent, plan, ownership generation and intent. A digest establishes content identity, not correctness: the validator traverses the expected partition set and rejects duplicates, gaps, mismatched intervals and foreign receipts. The final root transition compares the identities that made that validation valid.
+
+The initial simplification is one `OwnershipGeneration` per publication domain. Reassignment invalidates all preparations under the old generation. Physical storage groups also have explicit ownership/fence identities; grouping arrangements does not let one domain's stale writer mutate another's committed storage. Finer-grained fences and partitioned metadata require separate models and measured benefit. Splitting the atomic root without replacing its cross-record transaction guarantees is forbidden.
+
+### 4.3 Raft as an evidence-triggered alternative
+
+If G0 establishes that the object-store root cannot meet an important supported workload's latency, contention or availability requirement, evaluate a mature **embedded Raft library**, such as OpenRaft, for a separately specified metadata profile. Do not implement a new consensus algorithm. The library still requires integration of durable votes/logs/snapshots, networking, membership, recovery and the same metadata state machine. A quorum must be available to commit new decisions; a dormant deployment cannot both stop every voter and keep answering requests. Durable quorum state and its backup/restore path would become authoritative infrastructure for that profile. [S3]
+
+This is not a silent runtime switch or a prerequisite for the default deployment. Any alternative needs a new ADR, migration/recovery design, conformance evidence and a clear operating-cost benefit while preserving the requirement of no separately operated coordination service.
 
 ## 5. Immutable arrangements and backend contracts
 
-An arrangement has a logical identity derived from normalized input expression, schema, key expressions, equality/collation rules, tenant/security scope, and semantic version. A physical layout additionally identifies partitioning, encoding, algorithm version, and storage backend. Equivalent expressions do not automatically authorize sharing across security scopes or incompatible retention policies.
+Use **SlateDB as the preferred backend**, with an IVM-specific arrangement layer that implements the logical MVCC contract. The goal is to reuse its storage, compaction and durable-version machinery. Do not plan a new general storage engine or a broad interchangeable-backend framework. A simple immutable-batch implementation may serve as a correctness oracle/prototype; a production replacement requires evidence of a material unresolved drawback, consideration of an upstream fix and an explicit decision.
 
-The `ArrangementStore` boundary deliberately has **no public publish method**. Operators prepare state; only `MetaStore` can select a visible root.
+An arrangement's logical identity includes normalized expression, schema, key/equality/collation rules, tenant/security scope, source/time lineage and semantic version. Its physical identity adds partitioning, encoding, algorithm version and storage group. Equivalent expressions do not authorize incompatible security or retention sharing. Avoid a database per view: place compatible arrangements in partitioned SlateDB databases using explicit namespaces. Grouping requires compatible ownership/recovery and I/O budgets; measure writer, checkpoint and compaction contention and isolate groups when needed.
+
+The boundary deliberately has **no public publish method**. Operators prepare state; only the metadata kernel selects authority.
 
 ```rust
 // Contract sketch; types and async syntax are not an implementation API.
 trait ArrangementStore {
-    fn open(&self, version: ArrangementVersion, pin: &ReadPin) -> Snapshot;
+    fn open_as_of(&self, history: PublishedHistory, cut: LogicalCut,
+                  pin: &ReadPin) -> Snapshot;
     fn lookup(&self, snapshot: &Snapshot, key: Key) -> WeightedRows;
     fn scan(&self, snapshot: &Snapshot, range: KeyRange) -> BatchStream;
-    fn prepare(&self, base: ArrangementVersion, delta: Delta,
+    fn prepare(&self, base: PublishedHistory, changes: TimestampedChanges,
                intent: &StageIntent) -> DurablePrepared;
     fn verify(&self, prepared: &DurablePrepared) -> IntegrityResult;
+    fn compact(&self, history: PublishedHistory, permit: &CompactionPermit)
+               -> DurablePrepared;
     fn release(&self, retired: RetiredVersion) -> ReclamationWork;
 }
 ```
 
-`DurablePrepared` is returned only after all required bytes and backend retention references survive process destruction. It identifies the exact base, `[L,U)`, attempt, semantic/codec versions, ownership generation, checksum root, reconstruction class, and protected backend checkpoint. A successful mutable KV write, a completed in-memory snapshot, or a local spill file cannot satisfy this return type.
+`PublishedHistory` binds exact physical references, an authorized logical cut range/coverage, schema/semantic/codec versions and the per-cut lineage mapping. `DurablePrepared` certifies an exact parent, `[L,U)`, attempt, ownership identities, timestamped output/recovery state, checksum root and protected backend checkpoint(s). It is returned only after required bytes and backend retention survive process destruction. A successful mutable write, transient snapshot or local spill file does not satisfy it. `compact` prepares equivalent replacement data; it cannot advance `since` or retire old roots on its own.
 
-The first candidate backend is SlateDB, but qualification must demonstrate the entire adapter contract. Current SlateDB documentation distinguishes in-memory write completion from waiting for durability, and distinguishes transient `DbSnapshot` objects from durable checkpoints. An exact checkpoint reader is required; following a database's latest manifest would expose staged writes or the wrong version. [S4] [S5]
+SlateDB physical sequence/snapshot semantics do not implement Rockstream's logical time, source transactions or cross-arrangement atomic publication. Durable checkpoints and in-process `DbSnapshot` objects have different lifetimes. Published reads use named, protected checkpoints, never a live writer or an unprotected follow-latest reader. Await the selected release's actual durability and checkpoint completion boundary. [S4] [S5]
 
-A conservative adapter starts an attempt from an isolated branch reconstructed or copied from the exact parent checkpoint; a backend-native clone may implement this only after qualification. An existing mutable writer whose state is ahead of that parent is not a valid base. It then serializes each partition's staging boundary: finish writes for `[L,U)`, stop subsequent writes, await durability, and create and persist an exact checkpoint. It verifies that the checkpoint contains all intended writes and no later interval. Published readers open the checkpoint referenced by the Rockstream manifest, never the live writer. Multiple SlateDB databases do not provide one Rockstream transaction; metadata publication supplies that atomicity.
+A conservative adapter restores an isolated attempt from the exact logical parent and its protected backend state; qualify native cloning before relying on it. It serializes each storage group's checkpoint boundary: finish the intended writes, prevent overlapping writes from making that boundary ambiguous, await durability, create the checkpoint, and verify its membership. A physical checkpoint can contain several arrangements and support several logical cuts. Per-arrangement descriptors specify which committed namespaces and logical history are readable; unrelated data present in the physical checkpoint gains no visibility. Physical batching must not require every independent consumer to reach the same logical upper.
 
-After an abandoned preparation, discard its mutable branch and restore the next attempt from the last published checkpoint. Opening the same live SlateDB prefix after a crash can recover unpublished writes, so reopening it and applying the interval again is forbidden. Reusing a live handle after successful publication is an optimization requiring proof that it is exactly the new parent, with no speculative descendants included. Abort-then-retry and new-owner restart after staging are mandatory adapter tests.
+After abandoning a preparation, discard its speculative mutable branch and restore the next attempt from the exact published parent. Reopening a live prefix can recover unpublished writes; applying the interval again to that state is forbidden. Sharing physical databases does not relax this requirement. G0 must establish a concrete namespace/branch protocol for grouped arrangements without duplicating or losing another consumer's committed state. Reusing a writer after a successful publication requires proof of the selected parent and isolation from speculative descendants.
 
-Checkpoint lifetime is a safety boundary. Before publication, establish a **non-expiring durable checkpoint**, associated with a registered staging intent. Do not publish a temporary checkpoint and assume a background task will remove its expiry in time. A sufficiently long outage could outlive the temporary pin. A crash between checkpoint creation and registration may leak storage; an inventory reconciler can recover or quarantine that orphan. It must not guess that an unrecognized checkpoint is disposable. No native checkpoint is removed until Rockstream's root graph proves it unreferenced.
+Before publication establish **non-expiring durable checkpoint protection**, linked to a registered staging intent. A temporary checkpoint may be used while preparing, but its expiration must be removed and durability confirmed before its dependent publication commits. Do not assume a background refresh after acknowledgement will run before a long outage or full suspension. An ambiguous checkpoint creation is reconciled by saved identity. A crash can leak an orphan; reconciliation must conservatively protect or quarantine it, not guess that it is disposable. No native checkpoint is deleted until Rockstream's root graph proves it unreferenced.
 
-The adapter must also show that stale writers cannot overwrite committed bytes, fencing works on the selected object backend, restart identifies the exact persisted boundary, independent readers survive compaction, and rolling upgrades preserve checkpoints. If these tests fail, keep the interface and use a simple immutable batch backend for correctness prototypes while resolving the adapter gap. Do not silently weaken publication semantics to fit a dependency.
+Qualification must demonstrate exact logical reads after process destruction; timestamp-aware compaction; physical checkpoint sharing; stale-writer fencing; aborted attempts and retries; independent readers during native GC; and rolling-upgrade compatibility. Measure point probes and scans, write/request amplification, retained history, merge/consolidation costs, small-batch overhead, clones, and cold start. If a contract or important cost target fails, first investigate layout, batching or upstream changes. Never weaken publication or retention semantics to fit a dependency.
 
 ## 6. Publication protocol
 
-A version manifest contains domain/run/attempt identity; parent version; `[L,U)`; complete source-cut and imported-version lineage; plan/catalog/ownership revisions; arrangement roots; durable output-delta roots; input-log references; complete expected partition coverage; schema and codec versions; and reconstructibility descriptors. Unchanged arrangements reuse protected parent references. The graph is acyclic and integrity checked.
+A version manifest contains domain/run/attempt identity; parent version; `[L,U)`; durable published upper, logical `since` and supported cut coverage; complete source-cut and imported-history lineage; plan/catalog/ownership revisions; arrangement roots; timestamped durable output-delta roots; input-log references; complete expected partition coverage; schema and codec versions; and reconstructibility descriptors. Unchanged arrangements reuse protected parent references. The graph is acyclic and integrity checked.
 
 Preparation is speculative and may run in parallel; visibility remains ordered per domain. The initial implementation permits one publishing interval at a time per domain. Pipelining can later prepare descendants, but they must be invalidated if their expected parent is not published.
 
@@ -156,7 +199,7 @@ The protocol is:
 2. Execute from the exact parent state. Exchange messages carry run, plan, generation, `AttemptId`, epoch, producer/partition identity, and sequence. Receivers reject messages outside their active attempt. Acknowledged transport completion does not replace logical frontier accounting.
 3. Each expected partition prepares durable arrangement changes and output changes, then records a receipt bound to that exact attempt. Partitions with no changes still attest completion. A coordinator must not infer an absent partition from a lack of traffic or combine receipts from different attempts.
 4. Validate the complete receipt set and all object/checkpoint references. Produce a sealed manifest and an immutable validation record. Sealing makes the attempt's object membership immutable.
-5. Atomically compare the expected domain head, run incarnation, catalog/plan revision, membership generation, publisher lease key, and sealed intent; install the version, advance published upper/source cut, and mark the intent published. This is the visibility linearization point.
+5. Atomically compare the expected domain head, run incarnation, catalog/plan revision, membership generation, authorized publisher identity, and sealed intent; install the version, advance published upper/source cut, and mark the intent published. This is the visibility linearization point.
 6. Notify serving and delivery workers. These notifications may repeat or disappear; workers reconcile from metadata. Resolve lost responses by looking up the attempt/version identity.
 
 ```text
@@ -169,7 +212,7 @@ publish(attempt):
         domain.plan == p.plan,
         domain.catalog == p.catalog,
         domain.generation == p.generation,
-        publisher_lease_key == p.publisher_lease,
+        domain.publisher == p.publisher,
         intent.state == SEALED and intent.digest == p.digest,
         writes = [version_record(p), domain_head(p), intent_state(PUBLISHED)]
     )
@@ -181,7 +224,7 @@ The comparison against durable input is tied to the sealed input reference and i
 
 ## 7. Ownership, exchange, and reassignment
 
-Leases detect abandoned work and enable failover. Safety comes from immutable namespaces, monotonic generations, and generation comparisons in the same transaction that publishes. A worker's belief that its lease has not expired is not authority.
+Heartbeats and scheduling leases help detect abandoned work. Safety comes from immutable namespaces, monotonic generations, and generation comparisons in the same root transition that publishes. A worker's belief that its clock or lease permits work is not authority. Competing recovery/activation attempts acquire ownership by CAS; losing candidates cannot publish. Restart after ordinary failure and wake from suspension use the same fencing and exact-parent recovery invariants.
 
 For reassignment, stop admitting new work for the selected domain interval, let eligible work publish or abandon it, pin the last published root, and atomically install the new assignment map with a higher generation. The replacement restores that root, replays only accepted unpublished input, then resumes preparation. A stale process may finish uploading old-generation objects, but it cannot make them visible. Its messages are rejected by new-generation receivers.
 
@@ -193,15 +236,17 @@ The initial recovery design replays a whole unpublished interval instead of rely
 
 Independent domains improve liveness only for independent dependencies. They do not create a global transaction order. A cross-domain maintained query initially imports explicit, published input versions into a consuming domain. Imports carry complete lineage and source cuts, and the consuming domain durably records the import as input. A new import is a version-to-version delta, not a change in a pointer to an independently moving latest value.
 
-Compatibility requires **equal complete boundaries for every overlapping source incarnation**, complete source transactions, and closure over recorded causal/import dependencies. Merely requiring each view's frontier to be greater than or equal to a target is insufficient. For disjoint sources, the product cut is explicit but does not assert that those sources participated in a real-world atomic transaction. If overlapping dependencies cannot be aligned using retained snapshots, the query waits for a supported compatible cut or fails with an actionable consistency error. It never picks independently latest versions and labels the join consistent.
+Compatibility requires **equal complete boundaries for every overlapping source incarnation**, complete source transactions, and closure over recorded causal/import dependencies. Merely requiring each view's frontier to be greater than or equal to a target is insufficient. For disjoint sources, the product cut is explicit but does not assert that those sources participated in a real-world atomic transaction. If overlapping dependencies cannot be aligned using certified logical history, the query waits for a supported compatible cut or fails with an actionable consistency error. It never picks independently latest versions and labels the join consistent.
 
 An import first acquires a durable source-version pin and retains its lineage. It may release that pin only after all required imported bytes and future replay obligations are durably owned by the consumer, or after references to the source objects have disappeared. Sharing an object pointer across domains transfers no retention ownership by itself. Dropping or pausing a producer cannot invalidate an accepted consumer input.
 
-Example: `orders_summary` has source cut `{orders: 100, customers: 70}`; `customer_flags` has `{customers: 73}`. Reading both latest versions mixes customer states. Select a retained `customer_flags` version at `70`, advance and align the summary to a compatible cut, or fail. Comparing their domain epoch numbers cannot solve the mismatch. An import cycle between domains is rejected initially; recursion belongs inside an explicitly supported computation scope.
+Example: `orders_summary` has source cut `{orders: 100, customers: 70}`; `customer_flags` has `{customers: 73}`. Reading both latest versions mixes customer states. Reconstruct `customer_flags` at the compatible customer boundary `70` from certified retained history, advance and align the summary, or fail. It is not necessary that both producers created a physical checkpoint at `70`. It is necessary that the selected logical histories have compatible lineage, complete transactions and causal closure. Source offsets here are illustrative typed boundaries, not domain epoch values. An import cycle between domains is rejected initially; recursion belongs inside an explicitly supported computation scope.
 
-Read policies select a version, then use the same pinning protocol. Latest committed reads resolve the head through linearizable metadata. Bounded-staleness reads verify the freshness contract and wait/fail if the replica cannot load an eligible version. Read-your-writes follows the write token's dependency coverage. Historical reads require a retained version; they never fall back silently to newer data. Repeatable multi-statement reads reuse one snapshot token. Tenant binding and current authorization are checked for every token use; possession of a signed token is not a grant of access.
+For histories in the **same logical time domain**, a candidate cut satisfies `max(S_i) <= C <= min(Cp_i)` and belongs to every history's supported coverage. For a latest common read choose the greatest eligible cut; if no such cut exists, wait or fail. Across domains, perform this selection through source-cut/lineage mappings and dependency closure, not a numerical minimum of unrelated epochs. A physical checkpoint may be newer than `C` while its logical history validly reconstructs `C`. The returned token records both the logical cut and the exact protected roots used to produce it.
 
-Pin creation and version eligibility are one metadata transaction. Reading a pointer, downloading data, and only then pinning it is unsafe. A reader renews before its lease expires; after renewal uncertainty it must stop successful completion and reacquire/validate, rather than assume its old root still exists. Serving caches accelerate versioned reads and never determine authority.
+Read policies select a certified cut and physical roots, then use the same pinning protocol. Latest committed reads resolve authoritative heads at a linearizable metadata selection point and choose the latest compatible cut. An explicitly requested allowed-stale policy may select an older eligible cut and reports it; replica lag does not silently redefine latest committed. Bounded-staleness reads verify the freshness contract and wait/fail if the replica cannot load an eligible cut. Read-your-writes follows the write token's dependency coverage. Historical reads require a certified retained cut; they never fall back silently to newer data. Repeatable multi-statement reads reuse one snapshot token. Tenant binding and current authorization are checked for every token use; possession of a signed token is not a grant of access.
+
+Pin creation and version/cut eligibility are one metadata root transition. Reading a pointer, downloading data, and only then pinning it is unsafe. Pins and their protection are durable records, not process-local handles or object TTLs. Renewal, policy-driven revocation and retirement compete through the same root. An uncertain renewal or revoked/expired pin prevents successful completion under that token. Readers revalidate pin authorization after consuming the required bytes and before reporting a successful result or completed stream unit; a failed revalidation returns an explicit incomplete/expired outcome. An implementation using clock-based lease shortcuts must separately qualify clock bounds and GC delays. The initial design may retain abandoned pins conservatively until explicit revocation; bounded client duration does not itself prove that no reader remains. Serving caches never determine authority.
 
 ## 9. Retention, compaction, and garbage collection
 
@@ -209,11 +254,13 @@ Three operations must remain distinct: physical compaction rewrites equivalent b
 
 Retention roots include the **durable accepted-input head and its deduplication/admission state**, current publications, retained historical versions, active read pins, subscriptions, sink delivery cursors, branches, backups, rolling-upgrade rollback roots, staged replacement plans, and durable intents. Accepted but unpublished input stays protected after its upload intent closes, even if no view exists. Input-log compaction must preserve the authoritative source relation in a durable checkpoint and every remaining replay obligation before removing segments. A shared arrangement's retention is determined by all consumers. A slow consumer may exceed its budget and be explicitly disconnected or forced to resnapshot; the engine must not silently truncate its required history.
 
-For scalar domain epochs, a requested history boundary `S` may advance only to the minimum safe boundary across all remaining retention requirements. Explicit snapshot pins also retain their exact physical roots. Input-log retention uses each dependent view's replay floor and any rebuild/backup requirement, not merely the newest published frontier.
+For scalar domain time, `since = S` is the **inclusive earliest supported cut**. Advancing it to `S2` requires a protected base at `S2` and sufficient timestamped deltas/recipes for every still-promised cut, after satisfying all consumer, read, rebuild and backup obligations. Consolidating changes across epochs below `S2` is allowed; coalescing away a promised intermediate cut at or above `S2` is not. Replacement history roots and coverage become authoritative in a root transition that checks pins and expectations; old physical roots remain protected until their references retire. Input-log retention follows each dependent consumer's replay floor, not merely the newest producer upper.
+
+Compaction and GC may be paused for full suspension. Backend TTLs and external bucket lifecycle rules must not expire authoritative input, metadata, published checkpoints or retained dependency roots while no process is running. Expired customer retention policies can be reconciled on wake through the normal pin/retirement protocol; expiry is not permission for an independent cleaner to bypass reachability.
 
 GC must close the “checked unreferenced, then newly referenced” race:
 
-1. All objects belong to registered allocation namespaces. An intent registers and pins every existing base before reading or reusing it. New objects cannot be adopted by arbitrary raw object key.
+1. Data objects belong to registered allocation namespaces. An intent registers and pins every existing base before reading or reusing it. New objects cannot be adopted by arbitrary raw object key. Immutable metadata pages written while changing the root use its current open allocation generation; the root CAS checks that revision/generation. A failed CAS cannot resurrect pages from a closed generation. Metadata bootstrap and any sequenced-root GC have explicit qualified boundary rules.
 2. At metadata revision `R`, close allocation generation `g` and mark every live root, pin, and protected staging namespace. New allocations use `g+1`. A still-open namespace is protected as a unit, including uploads finishing after the mark traversal.
 3. New references to old-generation objects must descend from an already protected live root or namespace. The API prohibits resurrecting retired/tombstoned roots. Pin creation compares the version's live state; retirement compares its pin/reference state.
 4. Sweep only unmarked, closed-generation allocations. Record durable tombstones before physical deletion. Retries are idempotent; deletion failure leaks bytes rather than invalidating a live root.
@@ -241,6 +288,8 @@ The first Kafka sink capability is an outbox of published delta batches with sta
 
 A stronger optional sink protocol must atomically write output and a durable destination-side delivery marker, fence predecessor producers, and recover the last committed marker through read-committed consumption before advancing or retrying. Marker retention, transactional IDs, topic lineage, transaction size limits, and source/destination disaster restore must be qualified together. Nontransactional HTTP endpoints offer at-least-once attempts unless the receiver provides a durable idempotency contract.
 
+An internal ownership generation cannot cancel a source acknowledgement or sink send already issued to an external system. Delayed source acknowledgements must refer only to input already durably accepted under its original valid authority. Reconcile native source positions on takeover. Delayed/duplicate sink effects remain possible under the initial at-least-once contract; prohibiting further predecessor effects requires separately qualified destination-side fencing. Drain/wake uses these same external contracts, rather than claiming that metadata CAS alone fences another system.
+
 ## 12. Failure behavior
 
 | Failure boundary | Required outcome |
@@ -252,17 +301,19 @@ A stronger optional sink protocol must atomically write output and a durable des
 | After sealing, before publication | Reuse only if all recorded fences still match; otherwise abandon and recompute. |
 | After publication, before response/notification | Read the committed attempt identity; do not apply its delta again. |
 | Old worker resumes after reassignment | Generation rejects messages and publication; its immutable orphan bytes are reclaimable. |
-| Metadata quorum unavailable | Stop publication, new authoritative pins, ownership changes, and GC; existing unexpired pinned reads may continue. |
+| Metadata root unavailable or CAS outcome unknown | Stop new authority and GC; reconcile stable identities. Already protected reads may acquire bytes, but cannot report successful completion without required pin validation. |
 | Object storage throttled/unavailable | Backpressure ingress/maintenance; serve only resolvable published snapshots; never acknowledge undurable state. |
 | Corrupt or missing committed object | Fail the affected read/recovery, raise an integrity incident, repair from verified copies; do not substitute an older result as success. |
 | Pin expires during query | Fail/restart under a new valid token; do not claim the old query completed successfully. |
 | Sink response lost | Reconcile destination marker if qualified; otherwise replay with documented at-least-once behavior. |
+| Concurrent wake or old process returns after suspension | Root CAS installs one new ownership generation; reject stale internal acceptance/publication/cursor/protection changes. Reconcile external effects under their separate delivery protocol. |
+| All Rockstream processes and local caches disappear | Recover metadata root, protected input, published history and lifecycle from authoritative storage; replay accepted unpublished work. |
 
 Test failures before and after every durable boundary, including response loss after successful operations. A single happy-path restart test cannot establish these properties.
 
 ## 13. Backup, restore, and upgrades
 
-A backup is a verified metadata snapshot plus its entire reachable object/input/checkpoint graph, compatible executables or format readers, and decryptable key references. Begin with a durable backup intent that blocks reclamation of the capture boundary. Finish only after the metadata revision, root inventory, and required copied objects are verified and an immutable completion marker is recorded. Copying an object bucket alone is not a database backup.
+A backup is a verified metadata-root revision plus its entire reachable metadata/data/input/checkpoint graph, compatible executables or format readers, and decryptable key references. Begin with a durable backup intent that blocks reclamation of the capture boundary. Finish only after the metadata revision, root inventory, and required copied objects are verified and an immutable completion marker is recorded. All cloud authority is in object storage, but an uncoordinated bucket listing/copy is not a consistent backup: it can mix root revisions or omit still-referenced objects. A completed capture records and protects one coherent graph.
 
 For regional recovery, restore the latest **complete** backup, quantify its RPO against acknowledged inputs/publications, and open read-only until integrity checks finish. Create a new `RunIncarnation`; all pre-restore worker credentials, publication attempts, snapshot tokens, and subscription cursors become invalid. Preserve source lineage separately so offsets cannot be confused with new source data.
 
@@ -272,19 +323,19 @@ Rolling upgrades pin rollback roots, admit only mutually compatible plan/state f
 
 ## 14. Qualification gates and unresolved choices
 
-G2 requires one-node crash-consistent input, exact checkpoint reads, immutable publication, deduplication, and recovery against both local and object-store adapters. G3 adds shared retention, online graph changes, CDC handoff, and subscription/sink cursor qualification. G4 adds real metadata quorum faults, fenced reassignment, complete distributed coverage, and scale tests. G6 requires restore drills, upgrade/rollback, sustained storage degradation, and tested runbooks. Security and fault injection start before G2; they are not deferred to productization.
+G0 must prototype exact logical MVCC over SlateDB, one-root metadata contention/fault behavior, and full stop/resume without a resident coordinator. G2 requires crash-consistent input, exact historical reads, immutable publication, deduplication and recovery on both local and cloud adapters, including accepted input with zero views and destruction of every process/local cache. G3 adds shared retention, independently scheduled consumers, online graph changes, CDC handoff and subscription/sink cursors. G4 adds concurrent coordinators, metadata storage partitions/throttling, fenced reassignment, distributed drain/wake, complete coverage and scale tests. G6 supplies sustained economics, restore/upgrade drills and runbooks. All are proposed, unexecuted gates.
 
-Required falsification tests include a missing partition receipt, delayed exchange from an abandoned attempt, old-generation upload/publish, checkpoint expiry across a long outage, duplicated accepted source transaction, a pruned client sequence retry, source incarnation reuse, mixed source cuts, GC versus pin acquisition, accepted unpublished input with zero views during GC, abandoned upload completing after GC starts, lost publication response, stalled subscriber retention, and restore while the previous deployment still exists. Assert full result snapshots and output transcripts, not merely matching row counts.
+Required counterexamples include a missing receipt; delayed abandoned-attempt traffic; stale generation publishing after a successful takeover; a fence check separated from head update; a lost successful CAS response; concurrent bootstrap/wake; metadata-page GC during a root transition; checkpoint expiry across a long suspension; two physical checkpoint schedules with a valid common logical cut; an unavailable cut hidden inside nominal `[S,Cp]`; DISTINCT changes that cancel across an interval but produce an intermediate row; GC versus a history pin; accepted input with no views; and restore while the former deployment survives. Assert complete snapshots and transcripts, not just row counts.
 
-Open prototype decisions are the exact SlateDB release/API pin, checkpoint granularity and cost, etcd publication/pin throughput at target view count, snapshot-token renewal policy, source-cut representation size, and cold-recovery budget. These are performance and implementation questions under fixed invariants. They do not reopen whether unpublished state may be exposed or whether expired history may be silently substituted.
+Open implementation choices are the compatible SlateDB and transactional-object releases, logical trace/index layout, grouping and checkpoint frequency, conditional-root protocol and supported object services, contention envelope, pin validation/revocation cost, source-cut representation and cold-recovery budget. These questions may narrow a qualified performance/deployment envelope or trigger an explicitly reviewed alternative. They do not reopen correctness, no mandatory external coordination service, or truthful retention guarantees.
 
 ## Sources and relationship to prior work
 
 External pages were checked on **2026-11-25**. They establish component behavior and precedents; the Rockstream-specific protocol above is a proposal that still requires implementation and verification.
 
-- **[S1]** [etcd v3.6 API guarantees](https://etcd.io/docs/v3.6/learning/api_guarantees/): KV durability/ordering and watch limitations.
-- **[S2]** [etcd v3.6 system limits](https://etcd.io/docs/v3.6/dev-guide/limit/): metadata request/database constraints.
-- **[S3]** [SQLite synchronous pragma](https://www.sqlite.org/pragma.html#pragma_synchronous): WAL durability configuration.
+- **[S1]** [AWS S3 conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html) and [consistency model](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html#ConsistencyModel): storage primitives whose complete error and concurrency behavior must be qualified by the metadata adapter.
+- **[S2]** [`slatedb-txn-obj` 0.17.0](https://docs.rs/slatedb-txn-obj/0.17.0/slatedb_txn_obj/): single-object optimistic updates, pluggable persistence and epoch fencing; not a multi-object metadata service.
+- **[S3]** [OpenRaft 0.9.21 integration guide](https://docs.rs/openraft/0.9.21/openraft/docs/getting_started/index.html): application-owned storage/network/state-machine integration for the optional, evidence-triggered consensus alternative.
 - **[S4]** [SlateDB writes](https://slatedb.io/docs/design/writes/): in-memory completion and durability waiting.
 - **[S5]** [SlateDB checkpoints](https://slatedb.io/docs/design/checkpoints/): durable checkpoint lifetimes, snapshot distinction, and pinned readers. Current documentation must be matched to the release selected by the implementation spike.
 - **[S6]** [Materialize Persist design](https://github.com/MaterializeInc/materialize/blob/main/doc/developer/design/20220330_persist.md): a primary design precedent for immutable blobs with a consensus-controlled root. This informs the architecture; it does not validate this new protocol.

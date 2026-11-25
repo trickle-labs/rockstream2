@@ -8,11 +8,13 @@ Operators, SQL lowering, distributed execution and persistence can each appear l
 
 ## Decision
 
-Represent relational changes as weighted bags and use a typed DBSP-inspired incremental algebra. Maintain the law that the published result equals independent batch evaluation at the declared input cut, under the chosen SQL/numeric profile. Initialize from `Q(empty)`. Version semantic descriptors, not just code and file formats.
+Expose a SQL-first streaming database and optimize the admitted relational workload internally. Represent relational changes as weighted bags and use DBSP as the mathematical foundation of a typed incremental algebra. This choice is independent of adopting Feldera's DBSP runtime; [ADR 0005](0005-runtime-selection.md) records the preferred implementation and its comparison gate. Maintain the law that the published result equals independent batch evaluation at the declared input cut, under the chosen SQL/numeric profile. Initialize from `Q(empty)`. Version semantic descriptors, not just code and file formats.
 
 Use DataFusion/sqlparser and Arrow where their behavior matches the declared contract. Own binding adaptations, capability rejection and incremental planning. A DataFusion plan being accepted or executable does not imply PostgreSQL-compatible SQL or incremental support. Exact integer/decimal aggregation uses checked final semantics and exact/widened intermediate accumulation; approximate floats require an explicit separate profile.
 
 The [detailed semantic specification](../design/semantics-and-compiler.md) governs keys, NULL, duplicates, outer/anti behavior, ordering, temporal input and recursion. Specialized kernels may differ physically while implementing the same typed operator contract.
+
+Logical MVCC is part of that contract. A cut `C` contains epochs `e < C`; computed completion and durable published progress are separate. Keep sufficient timestamped state or output to reconstruct every advertised retained cut, including intermediate outputs of nonlinear operators. Physical storage snapshots and batch boundaries do not define the public logical clock. See [ADR 0009](0009-logical-mvcc.md).
 
 ## Alternatives
 

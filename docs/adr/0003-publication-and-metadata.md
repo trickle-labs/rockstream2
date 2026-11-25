@@ -1,23 +1,31 @@
-# ADR 0003: immutable data followed by atomic metadata publication
+# ADR 0003: atomic metadata on object storage without an external service
 
-**Status:** Proposed architecture; component selections provisional through G0. **Date:** 2026-11-25. **Owners:** storage/consistency and operations roles.
+**Status:** Proposed default architecture; substrate and costs require G0 evidence. **Date:** 2026-11-25. **Owners:** storage/consistency and operations roles.
 
 ## Decision
 
-Write durable immutable input, state and output first. Publish one complete domain descriptor through a linearizable conditional metadata transaction. That transaction is the visibility point. No operator, storage backend or subscriber independently advances authority.
+Keep all authoritative cloud data **and metadata** in a qualified object store. The metadata kernel is part of the Rockstream binary. No external etcd, ZooKeeper, Redis, SQL catalog or continuously running metadata tier is required.
 
-The publication compares parent head, run incarnation, catalog/plan revision, domain ownership generation, live publisher lease identity and sealed intent. Complete partition coverage is validated into an immutable bounded-root descriptor; the final CAS is constant-sized. A fixed ownership generation makes omitted/stale participants impossible to overlook through a partial generation check, at the cost of aborting prepares during reassignment.
+Start with one logical conditional metadata root per installation, pointing into immutable metadata pages. It selects the catalog, input/publication heads, deduplication state, ownership generations, pins, intents and lifecycle together. Prepare durable data and metadata pages first, then conditionally replace the expected root revision. That root transition is the logical transaction's linearization point. A single-object conditional update does not make separately written metadata objects atomic: all predicates and changes requiring atomicity must be covered by the same selected root.
 
-Input acceptance is separately durable and fenced. Its head, admission/deduplication state and authoritative source snapshot remain GC roots even when there are no views. Lost responses resolve by stable identity. Execution retries allocate a new attempt and restore the exact published parent.
+Publication checks the expected parent, run, catalog/plan revision, ownership generation, authorized publisher and sealed intent. The sealed receipt tree must cover the complete fixed participant set. The final update contains a bounded root, not an unbounded receipt list. Completeness validation remains trusted, tested code; a digest alone does not establish it.
 
-The proposed cloud metadata backend is etcd with three voters across failure zones. The embedded candidate is SQLite WAL with `synchronous=FULL` on a qualified local filesystem. They share API semantics but have different infrastructure failure guarantees. Readers/publishers use authoritative transactions; watch streams and cached reads cannot authorize mutations. [etcd's API guarantees](https://etcd.io/docs/v3.6/learning/api_guarantees/) and [SQLite WAL](https://www.sqlite.org/wal.html) are substrate documentation.
+Input acceptance separately commits its head, admission/deduplication state and protected recovery references. They remain live roots even with zero views. Pin creation and eligibility, pin renewal/revocation, and retirement also use atomic root transitions. Unknown outcomes resolve through stable operation identities. CAS conflicts require refresh and revalidation of every predicate.
+
+Evaluate reuse of [`slatedb-txn-obj` 0.17.0](https://docs.rs/slatedb-txn-obj/0.17.0/slatedb_txn_obj/) for the **single-object** primitive. Its transactional register, versioned-object protocol and optional epoch fence do not supply Rockstream's multi-record state machine, lease or GC semantics. Qualify the actual read, conditional-write, current-version discovery, ambiguity and reclamation protocol for each supported object service. [S3 conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html) are a concrete substrate reference, not a guarantee for every S3-compatible service.
+
+The embedded profile runs the same logical transitions through a qualified local filesystem adapter with exclusive process ownership and durable acknowledged root updates. Compiled implementation libraries are permitted; they add no separately operated service.
 
 ## Alternatives and consequences
 
-Distributed mutable writes with a custom cross-shard consensus protocol would add a large correctness surface. A relational metadata backend is a credible alternative if G0 shows lower operational cost and the required CAS/pin semantics; it must pass the same conformance suite. Object-store conditional writes alone are insufficient unless the adapter implements and proves the complete multi-key catalog/fence/pin contract.
+A mandatory etcd or external SQL deployment contradicts the operating requirement. Direct last-writer-wins object updates do not provide fencing. Splitting one root into independent keys prematurely would reintroduce atomicity gaps.
 
-The chosen shape introduces metadata availability into admission/publication and requires backup of metadata plus objects. A metadata outage stops new authority rather than sacrificing safety. Large manifests are immutable objects, not a way to exceed backend transaction limits. The coordinator's completeness validator remains trusted code and needs model/test evidence; a root hash alone proves nothing about missing participants.
+The single root serializes metadata commits and adds object-service latency, contention and tree-write amplification. Batch compatible work, keep roots small and measure aggregate ingestion, publication, pin churn and lifecycle operations. Computationally independent groups still share this metadata bottleneck; throughput is not assumed unlimited.
+
+A mature embedded Raft library such as [OpenRaft](https://docs.rs/openraft/0.9.21/openraft/docs/getting_started/index.html) is an evidence-triggered alternative if the baseline cannot meet a material requirement economically. It still requires durable votes/logs/snapshots, networking, membership, restore and an available quorum for new decisions. Adoption needs a new ADR and a migration/hibernation contract; it is not a transparent configuration switch or permission to create a separate mandatory service.
 
 ## Gate
 
-G0 models publication, admission, ownership and pin/GC races and measures metadata transaction rates and size limits at projected domain counts. G2 crashes before/after every durable/CAS boundary. G4 adds real quorum loss and stale-owner resurrection. See [consistency and storage](../design/consistency-and-storage.md); replacing the substrate must preserve that contract.
+G0 models publication, admission, ownership, metadata-page reachability and pin/GC races; injects lost CAS responses and concurrent bootstrap/activation; and measures target metadata traffic. G2 proves loss of every cloud process/local file and recovery from protected object roots. G3 adds shared history and consumer pin pressure; G4 adds distributed contention, partitions and stale-owner resurrection. No gate has run.
+
+The normative state machine and backend requirements are in [consistency and storage](../design/consistency-and-storage.md).

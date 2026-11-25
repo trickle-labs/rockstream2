@@ -4,15 +4,31 @@
 
 ## 1. Execution model
 
+The working choice is a lean **Rockstream-native Rust runtime**, with Arrow weighted batches, DataFusion for the SQL frontend and selected expression kernels, and Tokio for asynchronous I/O and task coordination. DBSP defines the incremental semantics; choosing that model does not require adopting Feldera's runtime. Reuse qualified algorithms and test infrastructure from the existing Rockstream selectively. The [G0 comparison](../adr/0005-runtime-selection.md) must still be able to overturn this choice in favor of Timely/Differential or suitable DBSP components if integration, correctness, or total cost warrant it.
+
 A physical plan is a versioned graph of tasks over virtual partitions. Tasks own operator state while scheduled on a worker; durable state identity survives the worker. A task descriptor includes deployment incarnation, tenant, domain, plan generation, topology revision, partition ID, ownership generation, unique `AttemptId`, input interval, arrangement handles, output schema, and resource reservation.
 
-Execute vectorized Arrow batches in cooperative lanes. Operators on a lane have one mutable owner. Pure map/filter/project and compatible aggregation work can be fused. Storage, network, timer and scheduling edges are asynchronous; individual scalar expressions are not separate tasks. This is a required execution shape, subject to the [runtime selection experiment](../adr/0005-runtime-selection.md), rather than an assertion that a custom runtime is already preferable.
+Execute vectorized Arrow batches in cooperative lanes. Operators on a lane have one mutable owner. Pure map/filter/project and compatible aggregation work can be fused. Storage, network, timer and scheduling edges are asynchronous; individual scalar expressions are not separate tasks. Keep the scheduler and progress machinery small and independently testable. A native runtime is a working implementation direction, not a measured performance advantage or a plan to reimplement storage, SQL parsing, networking, and consensus.
 
 The same operator, state, progress and publication interfaces run in embedded and distributed modes. The simulator injects deterministic implementations of the environment at those interfaces. It must not replace production algorithms with a simpler simulator-only commit or routing path.
 
+### Deployment and authoritative state
+
+Ship one binary with composable roles. Logical planes are responsibilities, not mandatory services. No profile requires etcd, ZooKeeper, Redis, a separate catalog database, or Kubernetes. Libraries compiled into Rockstream are compatible with this requirement.
+
+| Profile | Operator-managed requirements | Durable authority |
+| --- | --- | --- |
+| Embedded | One process and a qualified durable local directory | Local storage plus an embedded implementation of the metadata contract |
+| Single-process cloud | One Rockstream process and a qualified object-store bucket | Protected object data and the transactional metadata root in object storage |
+| Distributed cloud | Multiple instances of the same binary and the same qualified storage | The same object-backed authority; local memory, SSD caches and worker placement are disposable |
+
+SlateDB is the preferred durable state backend. The arrangement layer owns logical versions, history coverage, and IVM access patterns; SlateDB's physical sequence numbers do not become Rockstream commit timestamps. Group compatible arrangements within partitioned databases rather than creating a database per view. Storage and computation are separated: maintenance, serving, and compaction can receive separate resource budgets without making a worker's disk authoritative.
+
+Eligible running processes perform coordination through the [metadata kernel](consistency-and-storage.md). The default cloud design has no dedicated always-on voter tier. Its initial atomic logical metadata root may serialize metadata transitions; measure batching, contention and request cost before adding complexity. An embedded Raft library is a qualified alternative only if the object-backed design cannot meet demonstrated needs; it is not a prerequisite for the sleeping profile or an interchangeable implementation requiring no new proof.
+
 ### Task lifecycle
 
-`Assigned → Restoring → Ready → Running → Preparing → Prepared → Published`, with `Draining`, `Fenced`, `Retrying`, and `Failed` branches. “Prepared” does not authorize reads. Initially a domain runs one publishing interval at a time. Later pipelining requires every staged version to name its exact predecessor and dependencies. Limit speculative intervals by memory, object bytes, and replay cost.
+`Assigned → Restoring → Ready → Running → Preparing → Prepared → Published`, with `Draining`, `Fenced`, `Retrying`, and `Failed` branches. “Prepared” does not authorize reads. Each result domain has one atomic publication group. Initially each group runs one publishing interval at a time. G2 uses one domain; G3 adds locally independent consuming result domains over common input/history, and G4 distributes them and adds general imports. Later pipelining requires every staged version to name its exact predecessor and dependencies. Limit speculative intervals by memory, object bytes, and replay cost.
 
 On failure, recover from the last published manifest and replay durable inputs. Mutable caches, partial output, and uncommitted accumulator changes cannot be reused without proving their input interval and generation. Operators never patch a published result in place to recover from an exception.
 
@@ -22,7 +38,7 @@ An exchange envelope carries domain/plan/topology, source and destination partit
 
 Use either durable replayable exchange references or deterministic recomputation from retained inputs and the previous committed state. The first implementation should favor replay from durable input and stage boundaries rather than invent another consensus log for every edge. Delivery can repeat: `(plan, interval, attempt, edge, sender, sequence)` identifies duplicates while an interval is active. On restart, discard all tentative operator effects for an uncommitted interval, allocate a new attempt, and replay from the exact published parent. Delayed messages from an abandoned attempt are rejected even if the owner and epoch did not change. A dedupe set without a coherent state rollback is insufficient.
 
-Completion accounts for all admitted messages and outstanding capabilities, including timers, spill reads, retries and recursive feedback when supported. End-of-stream on one socket is not proof that an epoch is complete. State transitions producing output must transfer progress ownership before releasing the input capability. A worker cannot certify an output upper greater than any required input/dependency upper.
+Completion accounts for all admitted messages and outstanding capabilities, including timers, spill reads, retries and recursive feedback when supported. End-of-stream on one socket is not proof that an epoch is complete. State transitions producing output must transfer progress ownership before releasing the input capability. Within a common logical timeline, computed upper `Cc` cannot exceed a required input/dependency upper. Across domains, use certified import/source-cut completeness and lineage rather than comparing numeric epochs. Durable published upper `Cp` advances only when the exact state, output, and history descriptors are protected and atomically published; `Cp <= Cc` within that domain. Epoch `e` on the same timeline is visible only when `Cp > e`. A crash can discard unpublished computed progress.
 
 ## 2. Memory, state and backpressure
 
@@ -34,7 +50,7 @@ Every task reserves memory for input, output, accumulators, arrangement cache, e
 | Operator working set exceeds memory | Use qualified spill representation or fail the affected publication | Evict correctness state as if it were cache |
 | Output fanout exceeds budget | Stream bounded chunks to durable staging; admission can reject future oversized work | Truncate correct output to meet an SLO |
 | Compaction debt grows | Reserve compaction capacity and reduce ingestion/admission rate | Report short-run throughput while debt grows indefinitely |
-| History pins exceed quota | Refuse new pin/renewal or expire at the contracted boundary | Delete data under an unexpired acknowledged pin |
+| History pins exceed quota | Refuse new pin/renewal or durably revoke protection at the contracted boundary | Delete data while its authoritative pin still protects it |
 | Input log retention nearly exhausted | Wake consumers, retain more under policy, or stop acknowledgements/admission | Skip required replay or silently rebuild from an inconsistent source |
 | Disk/cache fills | Evict reconstructible cache, throttle spill, reject new work | Treat local NVMe as the only copy of acknowledged input |
 
@@ -45,6 +61,8 @@ An error after durable ingestion can stop maintenance without undoing the source
 ## 3. Scheduling and elasticity
 
 Start with weighted fair scheduling across tenants and resource pools, then use freshness slack within a tenant's admitted budget. Favor a dependency on the critical path over a downstream task that cannot yet publish. Aging prevents starvation. Priority does not override durable ordering or memory admission.
+
+Schedule the shared workload graph, rather than assigning one isolated always-running circuit to every view. Each consumer records its own next required logical cut, retained-history obligation, publication group, and maintenance policy. An arrangement can continue to advance for a fast consumer while another reads an older retained cut. Sharing an arrangement does not add an atomic publication barrier between unrelated groups. Actual dependencies and explicitly grouped transaction visibility still constrain progress. A slow consumer pays for the history it retains; when its budget expires it must resnapshot or release the dependency under policy. The optimizer may duplicate state when that reduces total cost or protects an SLO.
 
 Scale decisions use backlog growth, estimated remaining work, source retention headroom, completion latency, CPU, memory, cache miss/restore rate, object-store throttling, exchange saturation and compaction debt. CPU alone is inadequate: adding workers during an object-store throttle can worsen both cost and latency.
 
@@ -59,17 +77,41 @@ Detect skew by key-frequency sketches and actual per-partition service time, mem
 | Mode | Trigger | Resume obligation |
 | --- | --- | --- |
 | Continuous | Durable input arrives | Keep up within admitted freshness and durability profile |
-| Adaptive microbatch | Size/deadline threshold | Batch only complete transactions; publish every sealed interval correctly |
+| Freshness-batched (adaptive microbatch) | Size/deadline threshold | Batch only complete transactions; preserve every advertised logical cut and publish every sealed interval correctly |
 | Scheduled incremental | Catalog schedule fires | Pin base state and all replay input since last published cut |
 | On-demand | A read requires a newer cut | Return wait/progress/timeout; never label the old result fresh |
 
-Pool suspension is a durable lifecycle transition, not a process crash masquerading as a feature. Record retained input obligations, timer deadlines, expected cold-start work, retention budget and wake triggers. Reject suspension if required source retention cannot be funded. Ingestion, metadata, and external sources may continue to cost money. Temporal queries can require clock-driven work even without data updates. A cold read's SLO includes restoration; warm-cache targets do not apply.
+### Suspension and scale to zero
+
+Scale to zero is an early architectural requirement. Distinguish suspending a maintenance pool, suspending serving, and hibernating all Rockstream processes. Maintenance can sleep while ingestion continues to append durable input. Full hibernation is permitted only when every required activity can stop or has a qualified external retention and activation arrangement. Storage continues to retain data and incur cost.
+
+Use a durable lifecycle, `Active → Draining → Dormant → Restoring → Active`, with retryable or failed transitions recorded in metadata:
+
+1. **Plan and drain.** Record the sleep scope, accepted-input and published heads, remaining replay obligations, consumer cursors, timer deadlines, source retention headroom, sink outbox state, storage budget, and wake condition. Serialize new admissions and wake requests against the lifecycle transition so an arrival racing the drain is either retained for resume or prevents dormancy.
+2. **Protect and fence.** Publish completed intervals or discard tentative work while retaining its accepted input. Protect the exact base, logical history and replay roots independently of the dying process. Transfer or retire ownership through a conditional metadata transition; stale owners cannot commit new internal acceptance, publication, cursor or protection changes afterward. This cannot cancel a previously issued source acknowledgement or sink send: reconcile source acknowledgements against durable accepted positions and retain the initial sink's at-least-once guarantee unless destination-side fencing is separately qualified. Do not depend on an in-memory pin, renewable worker lease, or expiring backend checkpoint to preserve a sleeping database.
+3. **Become dormant.** Commit the dormant record only after the required protections and fences hold. Suspend eligible processes; unfinished compaction or garbage collection may wait if this only retains additional bytes and stays within the storage budget. Full hibernation requires no live-client obligation, due timer, unprotected input, or sink-delivery commitment that demands an active process.
+4. **Restore and resume.** An activator starts the binary. Re-read authoritative metadata, conditionally acquire fresh ownership generations, reopen protected state, and replay from the accepted and published boundaries. Validate source continuity, cursor coverage, and sink delivery before advancing. Concurrent activators use the same conditional ownership protocol. A lost source interval requires explicit resnapshot/rebuild rather than invented continuity.
+
+Crash recovery and wake-up obey the same input, publication, fencing and retention invariants. A planned sleep additionally has a durable reason, expected duration, wake condition and resource budget. A crash during drain or resume must recover from the last authoritative transition, including ambiguous metadata writes.
+
+| Obligation | Consequence for sleep |
+| --- | --- |
+| Continuous ingestion or tight freshness | Keep the necessary roles active, or explicitly relax the workload's policy; sleeping cannot promise continuous work |
+| PostgreSQL WAL or Kafka offsets | Qualify external retention for the sleep interval and catch-up time; detect loss and rebuild when necessary |
+| Maintained clock/timer | Persist deadlines and arrange activation before required work is due, or reject sleep under that freshness contract |
+| Subscriber, build or historical read | Protect its exact retained cuts under quota and expiry policy; an expired cursor resnapshots |
+| Sink outbox | Retain undelivered envelopes and durable delivery state; delivery deadlines may require an active sink role |
+| Cold serving | Include process startup, state restoration and required catch-up in the response deadline |
+
+A stopped process cannot receive a request or start itself. Full hibernation therefore supports explicit manual restart or a configured platform/launcher trigger. An always-on gateway, external schedule, or event source may provide activation, but is an optional deployment integration with its own cost; Rockstream does not mandate a separate coordinator or orchestration product. A plain binary-plus-bucket installation can hibernate and restart manually without promising unattended request-triggered wake-up. Expose the chosen activation mechanism and minimum active roles as deployment facts.
+
+G0 measures a complete cold stop/resume experiment and its request/restore cost. G2 establishes durable single-process suspension; G3 adds independent shared consumers and retained history; G4 adds distributed drain, concurrent wake and stale-owner fencing. G6 qualifies the complete operator experience and long-running economics. None of these gates has yet run.
 
 ## 4. Reassignment, split and merge
 
 Moving compute ownership and changing state partitioning are separate operations.
 
-For a planned reassignment, choose a published boundary, stop admitting work that crosses the transfer, drain or discard tentative intervals, acquire the new ownership generation in metadata, reopen the exact durable state, and resume. The old owner is fenced even if its process is paused and later resumes. A failure-induced reassignment skips the graceful drain and replays from the published cut. Leases detect failure; generations checked at publication provide safety.
+For a planned reassignment, choose a published boundary, stop admitting work that crosses the transfer, drain or discard tentative intervals, acquire the new ownership generation in metadata, reopen the exact durable state, and resume. The old owner is fenced even if its process is paused and later resumes. A failure-induced reassignment skips the graceful drain and replays from the published cut. Heartbeats or leases can suggest failure; atomic ownership generations checked by authoritative transitions provide safety. Lease expiry alone never authorizes an unfenced write.
 
 Split/merge builds a new layout from a pinned version, routes catch-up into the replacement generation, validates key-range/hash coverage and row multiplicities, and changes routing plus active state references at a publication boundary. Both layouts can exist during migration; neither routing gaps nor double-applied input are permitted. Read and backup pins retain the prior layout as necessary. The catalog records progress so a coordinator restart resumes or aborts deterministically.
 
@@ -99,9 +141,11 @@ A request identity contains a server-issued signed client generation and monoton
 
 ## 6. Serving and subscriptions
 
-Serving resolves authorization and exact snapshot dependencies before executing a query. Pin the catalog generation and published versions in one coherent operation, then construct providers that read those versions only. Index absence can cause an admitted scan, a wait for an explicit build, or an actionable rejection; it cannot cause a read of a convenient newer mutable state.
+Serving resolves authorization and exact snapshot dependencies before executing a query. Pin the catalog generation, logical cuts, and their backing roots in one coherent operation, then construct providers that read those cuts only. Select cuts from published retained coverage, rather than requiring the physical checkpoints of every input to coincide. For shared source lineage, the selected cuts must represent the same source positions and satisfy transaction/causal closure. Domain-local scalar epochs are not comparable across domains. If no compatible retained cut exists, wait for admitted catch-up, rebuild under an explicit contract, or report unavailability. Index absence can cause an admitted scan, a wait for an explicit build, or an actionable rejection; it cannot cause a read of a convenient newer mutable state.
 
-Serving has separate CPU, memory, queue and cache budgets from maintenance. Shared object storage and network remain contention points, so measure mixed-workload interference. Cache keys include tenant, version, object generation, encoding and encryption context. Cancellation releases pins and work reservations idempotently. Long-running queries renew pins under policy or abort before accessing reclaimed history.
+Latest-committed selection resolves the authoritative metadata head. A separately requested allowed-stale policy can select an older covered cut; it must not describe an arbitrary replica's newest-known version as the authoritative latest result. All read policies use the same pin and source-compatibility checks.
+
+Serving has separate CPU, memory, queue and cache budgets from maintenance. Shared object storage and network remain contention points, so measure mixed-workload interference. Cache keys include tenant, version, object generation, encoding and encryption context. Cancellation releases pins and work reservations idempotently. Long-running queries renew protection under policy. In the initial protocol, revalidate the authoritative pin after reading its bytes and before reporting a successful result or complete streaming unit; revocation or uncertain metadata prevents successful completion. A local timeout or signed token alone does not establish protection against GC. Any future lease shortcut must separately prove its clock, pause and deletion assumptions.
 
 For subscriptions, acquire a snapshot pin and durable delta-log coverage from the same publication boundary. Send a delimited snapshot, then complete committed delta envelopes with stable IDs and the next cursor. Resume after the last acknowledged complete envelope; an interrupted envelope is retransmitted as one identifiable logical unit. Schema/plan changes either preserve a declared encoding contract or emit a control transition requiring client acknowledgement/rebootstrap. Authorization is rechecked on resume and policy changes.
 
@@ -124,7 +168,7 @@ The first vertical slice includes authenticated sessions, explicit catalog owner
 | Stale process credentials | Workload identity plus generation fencing; credential validity alone cannot publish |
 | SQL/source configuration accessing arbitrary networks or files | Disable unapproved DataFusion providers/UDFs and filesystem/network functions; connector destination allowlist and egress policy |
 | Resource denial of service | Admission limits for fanout, transactions, reads, history, graph builds, spill and metadata size |
-| Secret leakage | Secret-manager references; redacted logs, explain plans, errors and support bundles |
+| Secret leakage | Configured secret references, including local credential injection; optional secret-manager integration; redacted logs, explain plans, errors and support bundles |
 | Shared-state policy change | Reauthorize consumers and invalidate/rebuild incompatible identities at a catalog boundary |
 | Corrupt or malicious stored data | Bounded parsers, format/version checks, authenticated transport, checksums and quarantine |
 
@@ -136,7 +180,7 @@ Provide system tables for domains, views, plans, dependencies, arrangements, par
 
 Freshness diagnosis should answer: which dependency is blocking; what input age and backlog it carries; whether the bottleneck is source, schedule, compute, exchange, staging, metadata or delivery; and which intervention is supported. A sink lag must not be displayed as a materialization lag.
 
-Metrics include throughput, rejected transactions, uncommitted bytes, object requests and latency, cache hit rate, state/history bytes, write amplification, exchange bytes, output fanout, pins and age, compaction debt, recovery bytes/work estimate, and attributed cost. Record histograms including timeout/error counts and correlate stage latencies with a domain/interval trace. Bound metric cardinality: per-row/key detail belongs in sampled diagnostic tables, not unbounded Prometheus labels.
+Metrics include throughput, rejected transactions, uncommitted bytes, object requests and latency, metadata retries/contention, cache hit rate, state/history bytes, write amplification, exchange bytes, output fanout, pins and age, compaction debt, recovery bytes/work estimate, and attributed cost. Expose consumer cursors, earliest retained cuts, sleep eligibility and blockers, minimum active roles, activation cause, cold-start/catch-up latency and dormant storage cost. Record histograms including timeout/error counts and correlate stage latencies with a domain/interval trace. Bound metric cardinality: per-row/key detail belongs in sampled diagnostic tables, not unbounded Prometheus labels.
 
 `EXPLAIN INCREMENTAL` distinguishes estimates from measurements, identifies shared arrangements and state obligations, shows selected strategy and rejected alternatives, and states worst-case fanout/state caveats. An analyze mode must not mutate a production view or consume an unbounded stream without explicit bounds and budgets.
 
@@ -145,7 +189,7 @@ Metrics include throughput, rejected transactions, uncommitted bytes, object req
 | Incident | Immediate action | Recovery / evidence |
 | --- | --- | --- |
 | Worker loss | Fence generation; preserve last head | Restore exact state, replay durable interval, verify catch-up before reassignment completes |
-| Metadata quorum unavailable | Stop new authoritative decisions and input acknowledgements requiring metadata | Existing pinned reads only within valid protection; revalidate heads/owners after quorum returns |
+| Metadata root unavailable or conditional updates cannot be resolved | Stop new authoritative decisions and input acknowledgements requiring metadata; do not complete reads without required pin revalidation | Resolve unknown outcomes and revalidate pins, heads and owners before continuing |
 | Object store slow/unavailable | Bound retries and staged bytes; apply backpressure | Preserve manifests; resume from declared interval; do not claim a fresh result |
 | Missing/corrupt published object | Fail affected reads/maintenance closed and isolate scope | Recover from protected replica/backup or qualified replay; exact validation before activation |
 | Source retention loss | Stop source progress and mark rebuild required | New snapshot/incarnation, reconcile and replace dependent views |
@@ -161,7 +205,7 @@ A backup binds catalog, domain heads, source cuts, format/plan versions, durable
 
 Restore into an empty deployment, allocate a new incarnation, validate all manifests and required objects, establish new credentials/fencing, rebuild permitted derived state, reconcile source offsets/slots and sink delivery state, then validate exact results before serving. Restoring older metadata while leaving current writers active is prohibited. Tokens and workers from the original incarnation are rejected. Source resumption and external sink effects require reconciliation because restoring the database cannot undo external deliveries.
 
-The first cloud profile targets zone failures with three metadata voters and suitably durable object storage. Asynchronous regional backup has a measured RPO and restore RTO; it does not offer zero acknowledged-data loss on region destruction. Synchronous multi-region publication would be a different latency/cost profile and remains outside initial scope. Publish DR measurements separately from ordinary worker failover.
+The first cloud profile targets compute/zone failures using a qualified object-storage durability and conditional-write contract for both bulk state and metadata. It does not require three always-on metadata voters. Actual tolerance depends on the chosen storage profile and tested recovery path; a generic S3-compatible label is insufficient. Asynchronous regional backup needs a measured RPO and restore RTO; it does not offer zero acknowledged-data loss on region destruction. Synchronous multi-region publication would be a different latency/cost profile and remains outside initial scope. Publish DR measurements separately from ordinary worker failover.
 
 ## 11. Upgrade and compatibility
 
@@ -173,4 +217,4 @@ Signing releases and recording dependencies/SBOMs support provenance; a signatur
 
 ## 12. Required qualification
 
-G2 proves process-crash durability and resource errors through the actual public interface. G3 adds graph lifecycle, pins, subscriptions and live connector transcripts. G4 adds multi-process ownership, progress, skew, exchange, state beyond RAM and independent serving. G6 adds operational drills, rolling upgrades, restore, long-running isolation, and measured cost/freshness envelopes. Advanced G5 features rerun all affected lifecycle and recovery gates; an isolated operator benchmark never suffices.
+G0 compares the preferred runtime with reusable alternatives, probes metadata contention and MVCC/storage cost, and measures complete stop/resume with empty caches. G2 proves process-crash durability, single-process sleep/resume and resource errors through the actual public interface. G3 adds graph lifecycle, independent consumer schedules, retained logical cuts, initial eligible factorization/partial aggregation, pins, subscriptions and live connector transcripts. G4 adds multi-process ownership, distributed suspend/resume, progress, skew, exchange, state beyond RAM and independent serving. G6 adds operational drills, rolling upgrades, restore, long-running isolation, and measured cost/freshness envelopes including dormant periods and wake-up. Advanced G5 features rerun all affected lifecycle and recovery gates; an isolated operator benchmark never suffices.

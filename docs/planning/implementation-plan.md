@@ -6,6 +6,8 @@
 
 Establish the semantic and durability contracts before distributing them. Build an end-to-end vertical slice through the public interface; expand one verified boundary at a time. Reuse existing Rockstream tests, fixtures, operational knowledge and selected kernels after dependency and semantic review. Avoid a wholesale fork that imports the old coupling into the new architecture.
 
+The working direction is a SQL-first database with a lean Rockstream-native Arrow/DataFusion/Tokio runtime, DBSP semantics, SlateDB-backed arrangements, logical MVCC and object-store-backed transactional metadata. G0 must test that direction against serious alternatives, especially Timely/Differential for computation; selecting the direction is not evidence that its implementation will win. No mandatory external coordination service or custom storage engine is on the baseline delivery path.
+
 The main release path is **G0 → G1 → G2 → G3 → G4 → G6**. **G5** is a portfolio of advanced features that can begin after their prerequisites and graduate independently. A production release can ship a deliberately smaller supported surface while recursion or sophisticated adaptive optimization remains experimental. Migration of a workload still requires parity for every capability that workload uses.
 
 ```mermaid
@@ -19,7 +21,7 @@ flowchart TB
     G5 -.-> G6
 ```
 
-Security, deterministic simulation, resource accounting, observability and compatibility are work in every stage. G6 hardens and qualifies them; it is not when they first appear.
+Security, deterministic simulation, resource accounting, observability, compatibility and suspension are work in every stage. G0 tests full hibernation feasibility, G2 proves durable single-process stop/resume, G3 accounts for shared consumer obligations, and G4 proves distributed drain/fencing and concurrent activation. G6 hardens and qualifies these behaviors; it is not when they first appear.
 
 ## 2. Staffing and estimates
 
@@ -29,28 +31,32 @@ The estimates below are rough **engineer-weeks of focused work**, not elapsed co
 
 | Gate | Indicative effort | Owner roles | Exit product |
 | --- | --- | --- | --- |
-| G0 | 8–14 engineer-weeks | Leads, verification | Evidence-backed runtime, storage, metadata and numeric decisions |
+| G0 | 8–14 engineer-weeks | Leads, verification | Evidence-backed runtime, logical MVCC, storage, metadata, suspension and numeric decisions |
 | G1 | 10–18 | Compiler/algebra, verification | Small semantic engine and independent oracle |
-| G2 | 18–30 | Storage, engine, gateway | Durable single-domain database slice |
-| G3 | 22–38 | Compiler, storage, connectors | Shared graph, online lifecycle, qualified sources/subscriptions |
-| G4 | 30–50 | Runtime/cloud, storage, verification | Distributed execution and independent serving under failures |
+| G2 | 18–30 | Storage, engine, gateway | Durable single-domain database slice with logical MVCC and stop/resume |
+| G3 | 22–38 | Compiler, storage, connectors | Shared graph, independent consumer schedules, online lifecycle, eligible factorization and qualified sources/subscriptions |
+| G4 | 30–50 | Runtime/cloud, storage, verification | Distributed execution, suspension and independent serving under failures |
 | G5 | 8–20 per substantial feature family | Compiler/runtime researchers | Individually promoted advanced capabilities |
 | G6 | 20–35, overlapping earlier stages | Operations, all leads | Reproducible production envelope and migration candidate |
 
-These ranges are a budgeting aid. The critical path is usually durable state/publication → lifecycle/retention → distributed recovery, not parser coverage. Keep at most two experimental algorithm families active until that path is stable.
+These inherited ranges are a budgeting aid and have not been re-estimated for the newly explicit logical-MVCC and suspension work; revise them before committing a delivery schedule. The critical path is usually durable state/publication → lifecycle/retention → distributed recovery, not parser coverage. Keep at most two experimental algorithm families active until that path is stable.
 
 ## 3. G0: resolve foundational choices
 
 | Work ID | Deliverable | Dependencies | Acceptance |
 | --- | --- | --- | --- |
 | P0.1 | Semantic/type matrix and tiny independent batch evaluator | None | Explicit NULL, duplicates, initialization, numeric return/overflow, ordering and unsupported-combination rules |
-| P0.2 | SlateDB arrangement adapter experiment and immutable-batch fallback | None | Exact pinned reopening after restart; staged data invisible; abort/retry from parent; durable protection survives compaction; record request/clone/checkpoint costs |
-| P0.3 | Timely/Differential, Feldera/DBSP and minimal-runtime comparison | P0.1 cases | Same query/delta/state contract, progress and recovery trace on each feasible candidate; explain any infeasible adapter boundary |
-| P0.4 | Publication/pin/GC state-machine model and metadata spike | None | Model rejects stale owner, omitted partition, expired-pin read, accepted-input GC, old-attempt packet and restore-incarnation counterexamples |
+| P0.2 | SlateDB logical-MVCC arrangement experiment | None | Exact base-plus-delta reconstruction at promised cuts independent of checkpoint cadence; staged data invisible; exact-parent retry; non-expiring protection survives compaction; record retained-history, request, clone and checkpoint costs |
+| P0.3 | Lean native runtime prototype, Timely/Differential comparison and Feldera reuse feasibility review | P0.1 cases | Same query/delta/state contract, progress, sharing, memory and recovery workload; document integration burden and any infeasible adapter boundary; retain the ability to reverse the native preference |
+| P0.4 | Publication/pin/GC state-machine model and object-metadata spike | None | One conditional root transition checks head/ownership/catalog/retention together; reject stale owner, omitted partition, expired-pin read, accepted-input GC, old-attempt packet and restore-incarnation counterexamples; resolve ambiguous CAS results |
 | P0.5 | Design-partner workloads and baseline evidence capture | Audit | Freeze common semantics, source/output amplification, SLO, state and read mix; no synthetic benchmark promoted as measured |
 | P0.6 | Dependency/license/security review and build reproducibility plan | Candidate selections | Compatible licensing, pinned versions, threat boundary, supported cloud APIs, deterministic test hooks and decision updates |
+| P0.7 | Full suspension and cold activation experiment | P0.2, P0.4 prototypes | Persist an eligible workload, stop every Rockstream process, discard cloud-profile local caches, activate from durable roots, fence concurrent/stale activations and recover exact state; measure cold cost and identify ingestion/timer/sink blockers |
+| P0.8 | Eligible partial-aggregation and factorization experiment | P0.1, P0.3 | Compare first-order and one eligible optimized join-aggregate on identical transactions, skew and deletes; quantify auxiliary state, shared reuse and lifetime cost; do not require general higher-order IVM |
 
-**Gate G0:** ADRs 0003–0005 move from candidate to a selected implementation after artifacts are reviewed. If no candidate satisfies immutable pinned-state/recovery contracts economically, implement a simple immutable batch baseline and narrow the first product; do not weaken publication. Timebox any candidate to a comparable vertical-slice experiment and one documented remediation attempt before selecting or rejecting it.
+**Gate G0:** review the implementation choices in ADRs 0003–0005 against artifacts, including logical MVCC and suspension. SlateDB is the preferred backend: first test a focused arrangement layout, batching and checkpoint policy, then consider a bounded upstream change if warranted. A minimal immutable baseline may serve as an experimental comparator; it is not authorization to build a custom storage engine. If a material limitation remains, record it and reconsider scope or backend explicitly without weakening publication. Timebox a candidate to a comparable vertical-slice experiment and a documented remediation attempt before selecting or rejecting it.
+
+The metadata spike starts with one authoritative root pointing to immutable metadata objects, batches transitions where safe, and measures contention across independent domains and pins. Evaluate `slatedb-txn-obj` for suitable primitives without assuming that one-object CAS provides a multi-object transaction. Qualify each supported object store's read and conditional-write semantics. An embedded Raft library is an evidence-triggered alternative only if this design fails a material requirement; its durable replica, membership and available-quorum needs must be included in a revised operational and sleep profile.
 
 **First three weeks, illustrative:** Week 1 defines executable contracts and frozen inputs while storage/runtime experiments begin. Week 2 exercises crash and reuse boundaries with the same tiny join-aggregate workload. Week 3 compares traces/costs, chooses components, closes or narrows unanswered questions, and revises estimates. Expand this timebox if evidence genuinely remains inconclusive; do not declare success from an API demo.
 
@@ -71,29 +77,34 @@ These ranges are a budgeting aid. The critical path is usually durable state/pub
 | Work ID | Deliverable | Dependencies | Acceptance |
 | --- | --- | --- | --- |
 | P2.1 | Durable input log, serialized admission state and bounded idempotency | P0.4, P1.1 | Acknowledgement survives crash; conflicting preimages rejected against accepted state; expired sequences never readmitted |
-| P2.2 | Arrangement preparation, manifests and metadata publication | P0.2, P0.4, P1.3 | Durable head advances only on complete exact state; ambiguous commit returns original outcome |
+| P2.2 | Logical-MVCC arrangements, manifests and object-root metadata publication | P0.2, P0.4, P1.3 | Distinct computed/durable published uppers; exact reconstruction at advertised retained cuts; durable head advances only on complete protected state; ambiguous commit resolves original outcome |
 | P2.3 | Catalog and single-domain lifecycle | P1.4, P2.2 | Create/drop schema and basic views with durable semantic/plan version; failure preserves prior catalog/result |
 | P2.4 | pgwire, keyed DML, pinned reads and result wait | P2.1–P2.3 | End-to-end driver transcript with cancellation, typed parameters, timeout-after-acceptance and RYW |
 | P2.5 | Crash runner, checksums, resource budgets and local/cloud adapter conformance | P2.1–P2.4 | Process killed at each persistence boundary, object faults, input with zero views, exact cold reopen; distinct local failure profile |
 | P2.6 | Initial identity/grants, secret references, metrics and structured errors | P2.3–P2.4 | Cross-user access denied, no secret leakage, budget/semantic error blocks only intended scope |
+| P2.7 | Durable single-process suspension and activation | P0.7, P2.1–P2.6 | Same binary runs local or cloud profile without external coordination; safe stop with zero views or pending accepted input, new ownership fence on activation, exact recovery after loss of all cloud-profile local files; explicit activation and retention contract |
 
-**Gate G2:** one direct-write transaction updates both sides of a join and an aggregate, receives durable acceptance, survives process destruction, then becomes visible once in a pinned query result. A failed or ambiguous attempt leaves no mixed state. The public API explains durable input versus published result. Published evidence covers deletes, zero-row results, retries, checked arithmetic and a read pin during compaction.
+**Gate G2:** one direct-write transaction updates both sides of a join and an aggregate, receives durable acceptance, survives process destruction, then becomes visible once in a pinned query result. A failed or ambiguous attempt leaves no mixed state. The public API explains durable input versus published result. Published evidence covers deletes, zero-row results, retries, checked arithmetic, exact retained cuts and a read pin during compaction. An eligible deployment stops with no Rockstream process left running and resumes from authoritative durable roots; cloud-profile recovery may not depend on a surviving local file or control process.
 
 **First implementation milestone:** use a customer/orders join-aggregate with customer-region changes, not only an append-only counter. The exact expected output is fixed in the test fixture. This exercises the architectural boundaries without requiring distributed deployment or rich SQL breadth.
 
 ## 6. G3: shared graph, lifecycle and external data
 
+Extend the G2 single domain with independently scheduled consuming result domains over a common input timeline. Each result domain still owns exactly one atomic publication group; sharing does not create per-view heads within that group. This local arrangement qualifies MVCC/scheduling separation before G4 introduces distributed groups and general cross-domain imports.
+
 | Work ID | Deliverable | Dependencies | Acceptance |
 | --- | --- | --- | --- |
-| P3.1 | Arrangement registry, consumer obligations and graph deduplication | P2.2–P2.3 | Full descriptor comparison, tenant isolation, shared-cost accounting, no premature release |
+| P3.1 | Arrangement registry, consumer obligations and graph deduplication | P2.2–P2.3 | Full descriptor comparison, tenant isolation, independent consumer schedules, shared-cost accounting, no premature release |
 | P3.2 | View backfill, catch-up, replace, cancel and drop | P3.1, P2.1 | Consistent snapshot-to-tail boundary; restart any lifecycle state; atomic plan swap and rollback pins |
-| P3.3 | History, read/subscription pins, output log and GC | P2.2, P3.1 | Pin/retirement race, no resurrection, late uploads, accepted-input roots and native backend GC coordination |
+| P3.3 | Logical history, read/subscription pins, output log and GC | P2.2, P3.1 | Pin/retirement race, no resurrection, late uploads, accepted-input roots and native backend GC coordination; reconstruct a common logical cut from disjoint physical checkpoint schedules and preserve nonlinear intermediate outputs |
 | P3.4 | Resumable snapshot-plus-delta subscriptions | P3.2–P3.3 | Complete cursor transcript; interrupted envelopes repeat safely; expired history and schema transition explicit |
 | P3.5 | PostgreSQL CDC and Kafka source adapters | P2.1, P2.6 | Real services, snapshot/WAL overlap, rebalances, source reincarnation, retention loss, large transactions and missing preimages |
 | P3.6 | Kafka outbox delivery with honest initial guarantee | P3.3–P3.4 | Stable envelope IDs, replay after ambiguous delivery; no exactly-once promotion without marker protocol |
 | P3.7 | Rule-based state-aware optimizer and explain/system tables | P3.1–P3.2 | Planner sees update rates/state/reuse; estimates labelled; executed sharing agrees with explain |
+| P3.8 | Initial eligible partial aggregation and factorized maintenance | P0.8, P3.7 | Exact first-order baseline, explicit eligibility/NULL/multiplicity rules, delete-safe recovery and lower measured lifetime cost for named shapes; retain baseline where unfavorable |
+| P3.9 | Continuous, freshness-batched, scheduled and on-demand consumer policies | P2.7, P3.1–P3.4 | Separate result domains over common input/history advance independently while slower consumers retain bounded history; sleep/catch-up admission checks, cursor expiry/resnapshot, timers and sink obligations remain explicit; no loss of valid pins |
 
-**Gate G3:** overlapping views reuse actual maintained state; online creation/replacement and slow subscribers survive faults without losing promised history. A live source transaction reaches the public query/subscription path correctly after connector restart. Sharing beats the unshared baseline on the designated workload including lifecycle and retention cost. A fast but unbounded-retention implementation fails.
+**Gate G3:** overlapping views in separately scheduled result domains reuse actual maintained state while readers select compatible logical cuts; each domain's publication remains atomic. Online creation/replacement and slow subscribers survive faults without losing promised history. A live source transaction reaches the public query/subscription path correctly after connector restart. Sharing beats the unshared baseline on the designated workload including lifecycle, retention and cold catch-up cost. A fast but unbounded-retention implementation fails. Sleep is rejected or narrowed when source retention, timers, delivery or consumer commitments require active work.
 
 ## 7. G4: distributed cloud
 
@@ -103,17 +114,18 @@ These ranges are a budgeting aid. The critical path is usually durable state/pub
 | P4.2 | Virtual partition ownership and domain publication | P4.1, P3.3 | Complete coverage under owner changes; old process resurrection cannot publish |
 | P4.3 | Independent serving pools and compatible cross-domain imports | P4.2, P3.4 | Exact shared-source cuts; unavailable cut waits/fails; read load cannot bypass maintenance quotas |
 | P4.4 | Reassignment, cold restore and controlled repartition prototype | P4.2 | Durable state follows ownership safely; split/merge remains unpromoted until routing and pin tests pass |
-| P4.5 | Cloud metadata/storage profile, mTLS and tenant quotas | P2.6, P4.1–P4.3 | Zone fault, metadata quorum loss, backend throttling, security negative controls and clear degraded modes |
+| P4.5 | Qualified object-metadata/storage profile, mTLS and tenant quotas | P2.6, P4.1–P4.3 | Zone/process loss, unavailable conditional writes, CAS contention and ambiguity, backend throttling, security negative controls and clear degraded modes; no required coordinator service |
 | P4.6 | Distributed simulation and scale/cost qualification | P4.1–P4.5 | Verified faults on distinct processes; state beyond RAM, skew, bounded debt, 1/2/4/8/16-worker profiles |
+| P4.7 | Distributed drain, suspension and concurrent activation | P2.7, P3.9, P4.2–P4.5 | Stop eligible pools or the whole Rockstream fleet, retain authoritative roots, fence late old packets/uploads and losing activations; activate using manual/platform trigger with no always-on Rockstream quorum |
 
-**Gate G4:** distributed execution is the same semantic engine; failover and ownership changes preserve exact publication. An unrelated stalled domain does not block another. Same-source result groups may progress separately, but joins use compatible retained source cuts. Release evidence includes real cloud object-storage behavior, not only local filesystem or MinIO equivalence assumptions.
+**Gate G4:** distributed execution is the same semantic engine; failover and ownership changes preserve exact publication. An unrelated stalled domain does not block another. Same-source result groups may progress separately, but joins use compatible retained source cuts. Eligible workloads survive total compute suspension and races between old and new activations. Release evidence includes real cloud object-storage behavior, not only local filesystem or MinIO equivalence assumptions. A claimed independent schedule may not hide a global graph barrier, while the shared metadata serialization point remains an explicitly measured contention limit.
 
 ## 8. G5: independently gated advanced capabilities
 
 | Work ID | Capability | Prerequisites | Promotion evidence |
 | --- | --- | --- | --- |
 | P5.1 | Outer/semi/anti joins, DISTINCT and decorrelation | G1 kernel, G3 lifecycle | NULL/empty/duplicate adversarial cases, deletion transitions, bounded state and exact recovery |
-| P5.2 | Factorized/higher-order join-aggregate strategies | P3.7 | Rewrite preconditions, independent baseline, measured lifetime cost, safe fallback under skew |
+| P5.2 | Broader factorized and higher-order join-aggregate strategies | P3.8 | Extend the G3 eligible core only with rewrite preconditions, independent baseline, measured lifetime cost and safe fallback under skew |
 | P5.3 | Top-K, ranking and selected window functions | G3 durable ordered state | Stable ties, refill after deletes, late updates, state bounds, wire ordering |
 | P5.4 | Replayable clock, temporal predicates and late-event policy | G3 retention, G4 progress | Expiration without new rows, clock replay, finalization boundaries and explicit corrections |
 | P5.5 | Restricted recursion | G1 algebra, qualified progress | Termination/resource contract; alternate paths/cycles/deletions; SCC/region rebuild policy and exact fixed-point oracle |
@@ -127,7 +139,7 @@ A first release can promote one useful subset, such as integer outer joins or To
 | --- | --- | --- | --- |
 | P6.1 | Backup, empty-environment restore and upgrade/downgrade drills | G3 pins, G4 profile | New incarnation, fenced old deployment, reconciled source/sink and exact query output |
 | P6.2 | Operational diagnosis, quotas, incident tooling and audit | G4 | Traced freshness blockers, no hidden forced frontier, actionable resource/error runbooks |
-| P6.3 | Scheduled/on-demand maintenance and bounded autoscaling | G4, P6.2 | Retained replay and timers, cold-resume envelope, hysteresis and cost cap |
+| P6.3 | Production suspension profiles and bounded autoscaling | P3.9, P4.7, P6.2 | Qualify earlier maintenance policies across real source/timer/sink constraints; cold-resume envelope, hysteresis, activation failure, retained-history headroom and total cost cap |
 | P6.4 | Full qualification bundle and independent checker | G4, promoted G5 | Correctness, faults, costs, negative controls, long soak and reproducible binaries/profiles |
 | P6.5 | Workload-specific shadow migration and rollback rehearsal | P6.1–P6.4 | Exact common-cut parity, client/token/cursor behavior, sink fencing and reverse cutover |
 | P6.6 | Release capability registry, support envelope and handover | P6.5 | Every advertised claim points to evidence; unresolved high-severity defects block release |
@@ -144,4 +156,4 @@ Review safety changes with one semantic and one storage/runtime owner when they 
 
 ## 11. Stop, narrow, or change course
 
-Revisit scope if G0 cannot produce economical durable arrangement versions; if the metadata kernel becomes a per-row bottleneck; if SQL semantic adapters erase reuse benefits; or if workload partners do not show meaningful total-cost gains. Prefer a smaller exact, durable product over an unbounded rewrite. Continue qualifying the original Rockstream in parallel as long as it carries real workloads. A clean-sheet design earns replacement through evidence, not its age or conceptual elegance.
+Revisit scope if G0 cannot produce economical logical MVCC on SlateDB; if the metadata kernel becomes a per-row bottleneck; if the native runtime does not justify its maintenance burden against Timely/Differential; if full suspension requires hidden always-on authority; if SQL semantic adapters erase reuse benefits; or if workload partners do not show meaningful total-cost gains. Prefer a smaller exact, durable product over an unbounded rewrite. Continue qualifying the original Rockstream in parallel as long as it carries real workloads. A clean-sheet design earns replacement through evidence, not its age or conceptual elegance.

@@ -4,6 +4,8 @@
 
 ## 1. The semantic contract
 
+Rockstream 2 is a SQL-first streaming database. Its internal unit of optimization is the whole admitted workload: compatible views can reuse subexpressions, arrangements and maintenance work while retaining their own freshness, retention and publication contracts. This internal computation model does not expand the initial public product into arbitrary user-defined distributed programs.
+
 The semantic model is a sequence of finite weighted relations. For a relation with row type `T`, `ZSet<T>` is a finite-support function `T → Z`. Addition sums multiplicities; negation retracts them. SQL input and output snapshots are bags with nonnegative multiplicities. Signed intermediate deltas are legal; a negative committed table multiplicity is an error, not a negative number of database rows.
 
 Within a consistency domain, `Epoch` is a totally ordered logical number. If `ΔR_e` is the complete input change at epoch `e`, then:
@@ -16,15 +18,29 @@ O_e       = O_initial + Σ_(i ≤ e) ΔO_i
 O_initial = Q(R_initial)
 ```
 
-For a newly empty database, `R_initial` is empty. `Q(empty)` is not always empty: an ungrouped `COUNT(*)` produces one row containing zero. Initialization is part of the circuit and must be published exactly once. Backfill instead establishes `Q` at a pinned nonempty input cut, followed by changes strictly beyond that cut.
+For a newly empty database, `R_initial` is empty. `Q(empty)` is not always empty: an ungrouped `COUNT(*)` produces one row containing zero. Initialization is part of the circuit and must be published exactly once. Backfill instead establishes `Q` at a pinned nonempty input cut `C`, followed by changes with epochs `e >= C`.
 
 The required invariant is equality of complete typed bags between incremental evaluation and batch evaluation at every published cut. Ordered output additionally obeys its ordering contract. For an opted-in approximate numeric capability, equality is replaced by that capability's stated error and reproducibility contract; this never weakens exact capabilities.
 
-DBSP provides a compositional framework for expressing integration, differentiation, and incremental transformations. Rockstream adopts that semantic foundation without treating a paper as proof of a particular implementation or of arbitrary performance. The reference interpreter, lowering rules, and persistence protocol all require their own evidence. [S1]
+DBSP provides a compositional framework for expressing integration, differentiation, and incremental transformations. Rockstream adopts that mathematical foundation; this is separate from choosing Feldera's DBSP runtime as an implementation dependency. The preferred native executor, any reused runtime components, the reference interpreter, lowering rules, and persistence protocol all require their own evidence. The paper is neither proof of this compiler nor a general performance guarantee. [S1]
 
-A published exclusive upper `U` means all epochs `e < U` are complete. `U = 28` includes epoch 27. An operator's computation frontier is not a durability acknowledgement. Domain-local epochs from different domains cannot be compared. A `SourceCut` describes the complete native source positions and imported relation versions represented by a snapshot; it is not a global clock.
+A logical cut `C` includes exactly epochs `e < C`; the equations above use an after-epoch snapshot, so `R_e` corresponds to cut `e + 1`. A published exclusive upper `Cp = 28` includes epoch 27. The computed upper `Cc` certifies completed evaluation; the published upper `Cp <= Cc` additionally certifies protected durable state and an authoritative publication. An operator's computation frontier is not a durability acknowledgement. Domain-local epochs from different domains cannot be compared. A `SourceCut` describes the complete native source positions and imported relation versions represented by a snapshot; it is not a global clock.
 
 An input transaction supplies an atomic set of changes. Intermediate retractions, transient negative counts, and intermediate join results are invisible until the whole epoch has been evaluated and published. Direct-write validation must reject an invalid transaction before durable acceptance. If a valid durably accepted input later makes a derived view exceed a resource or arithmetic limit, that view/domain stops publication with an explicit error; the accepted source transaction cannot be silently rolled back or skipped. Admission and safe numeric limits should make this exceptional, but recovery must preserve the distinction.
+
+### Logical MVCC and batching
+
+Maintained relations and shared arrangements expose retained logical cuts independently of the backend's physical versions. Let `S` be the inclusive earliest reconstructible cut. A complete retained range `[S, Cp]` is supported by an exact base `R@S` and sufficient timestamped changes:
+
+```text
+R@C = R@S + Σ_(S <= e < C) ΔR_e, for S <= C <= Cp
+```
+
+Empty changes still carry progress and lineage. A published descriptor declares coverage and any gaps; inputs merely being replayable does not make an uncomputed historical result immediately queryable. A physical checkpoint can protect several logical cuts, and checkpoints for different relations need not occur at identical cuts. A read chooses compatible covered cuts and pins their backing state through the [storage contract](consistency-and-storage.md). Advancing `S` requires the retention protocol to release every older obligation.
+
+This permits different consumers of one arrangement to run at different cadences. It does not permit dropping time information that a consumer still needs. Consolidate equal `(row, epoch)` changes freely under the numeric contract; consolidate across epochs only when exact reconstruction of every advertised cut and every retained downstream input boundary survives. For example, insertion at epoch 10 and deletion at epoch 11 have net zero effect at cut 12, but the row exists at cut 11. Their combined zero cannot answer both cuts.
+
+For nonlinear operators, preserve sufficient per-epoch state/output to derive `Q(R@C)` at each advertised cut. Computing `DISTINCT`, an outer join, or `MIN` only at the end of a batch does not recover its intermediate answers from the batch's net input delta. A scheduler may evaluate complete epochs together, but skipping historical outputs requires an explicit narrower coverage contract or a qualified reconstruction plan. Subscriptions and downstream consumers cannot be told that skipped cuts were maintained.
 
 ## 2. SQL meaning belongs to Rockstream
 
@@ -94,8 +110,8 @@ G5 begins recursion with a restricted, finite, positive set-valued fragment and 
 | Parse and bind | Typed names and stable IDs against a pinned catalog revision; reject unsupported syntax, volatility, or semantic combinations early. |
 | Relational IR | Pure bag semantics, explicit NULL and aggregate contracts, stable expression hashes, source/dependency closure. Batch interpreter defines meaning. |
 | Incremental IR | Integration/differentiation, delay, weighted linear operators, bilinear joins, threshold/reduce, explicit clock inputs, and later fixed-point scopes. |
-| State planning | Logical arrangement requirements, ownership-independent identities, retention and recoverability classes, algorithm alternatives. |
-| Physical IR | Vectorized kernels, pre/post-state access, partitioning, exchanges, spill/recompute contracts, resource reservations, and complete-epoch output boundaries. |
+| State planning | Logical arrangement requirements, ownership-independent identities, consumer cursors, retained-cut coverage, retention and recoverability classes, algorithm alternatives. |
+| Physical IR | Vectorized kernels, explicit logical cut and pre/post-state access, partitioning, exchanges, spill/recompute contracts, resource reservations, and complete-epoch output boundaries. |
 | Deployment plan | Executable tasks, graph generation, semantic and binary versions, durable state schemas, and recovery recipe. |
 
 Illustrative type shape, not a current Rust API:
@@ -115,7 +131,7 @@ struct NodeContract {
     state: Vec<ArrangementRequirement>,
     cost_class: UpdateCostClass,
 }
-enum StateRead { BeforeEpoch, AfterEpoch, PinnedVersion(VersionId) }
+enum StateRead { BeforeEpoch, AfterEpoch, PinnedCut(LogicalCut, VersionId) }
 ```
 
 The actual semantic algebra remains small. `Arrange` changes representation, not relation meaning; `Exchange` changes placement, not meaning; `Integrate` and `Delay` make state/time dependence explicit. `Reduce` is a semantic operator with a specified batch interpretation, not an escape hatch for arbitrary imperative code. Fixed-point constructs cannot bypass termination or resource contracts.
@@ -126,7 +142,7 @@ The compiler separates semantic IDs from physical IDs. A change in worker placem
 
 ## 5. Algorithm portfolio and arrangement sharing
 
-First-order delta execution is the mandatory baseline. Every advanced algorithm must have a semantic fallback and a matched benchmark, or a clear capability rejection when no resource-safe fallback exists.
+First-order delta execution is the mandatory baseline. Eligible partial aggregation and factorization are early design tests: G0 prototypes the grouped customer/order example, and G3 qualifies a bounded initial family against the baseline through persistence and recovery. More general higher-order derivatives, multiway joins, recursion, and automatic plan changes remain independently gated G5 work. Every optimized algorithm must have a semantic fallback and a matched benchmark, or a clear capability rejection when no resource-safe fallback exists.
 
 | Strategy | Admission condition | Material limit |
 | --- | --- | --- |
@@ -143,7 +159,7 @@ For orders joined to customers and summed by region, maintain order sum and rele
 
 A reusable logical arrangement identity contains the normalized expression, input identities and lineage, time domain, schema, semantic version, equality/key expressions, collation, and security-sharing scope. Physical variants add partitioning, encoding, compression, and format version. A hash match is only an index into a catalog: full semantic descriptors must match before reuse, and a separate compatibility check verifies that the physical variant can satisfy the new consumer's retained-history and freshness requirements. Two views with different authorization policies cannot accidentally share a policy-dependent result. Shared physical input state is permitted only within an explicitly authorized isolation boundary.
 
-Sharing does not imply identical freshness or infinite retention. Each consumer acquires a lease and records the minimum history it needs. The planner may fork a physical arrangement when one consumer's retention, load, or availability requirements impose excessive cost on others. Dropping a view releases its references through the catalog lifecycle; it never directly deletes a shared trace. Differential Dataflow's arrangement abstraction supports indexed sharing as a useful precedent; durable multi-tenant sharing adds Rockstream-specific contracts. [S8]
+Sharing does not imply identical freshness or infinite retention. Each consumer records its next required cut, retention protection, publication group, and maintenance policy. Shared arrangement progress can advance while a slower consumer reads retained older versions; unrelated groups do not acquire a common commit barrier merely through sharing. Explicit dependencies and atomically grouped publication still require compatible cuts. The planner may fork a physical arrangement when one consumer's retention, load, or availability requirements impose excessive cost on others. Slow consumers use a bounded history budget and may need to resnapshot after expiry. Dropping a view releases its references through the catalog lifecycle; it never directly deletes a shared trace. Differential Dataflow's arrangement abstraction supports indexed sharing as a useful precedent; durable multi-tenant sharing adds Rockstream-specific contracts. [S8]
 
 ## 6. Optimize lifetime cost under constraints
 
@@ -153,13 +169,14 @@ Use a planning horizon H and estimate money over that horizon:
 expected_cost(H) = initial_build_cost
   + compute_cost(H) + retained_state_cost(H) + object_request_cost(H)
   + network_cost(H) + compaction_cost(H) + expected_recovery_cost(H)
+  + cold_start_and_catch_up_cost(H) + replacement_overlap_cost(H)
 ```
 
-Prices and resource units are recorded separately; the model cannot add CPU seconds to bytes without conversion. Expected recovery cost uses an explicit scenario/failure frequency, while hard recovery objectives remain constraints. Optimize subject to semantic validity, tenant budgets, maximum state, freshness, serving latency, recovery limits, and allowed degradation. Cost estimates have ranges/confidence, not invented precision.
+Prices and resource units are recorded separately; the model cannot add CPU seconds to bytes without conversion. Expected recovery and wake-up costs use explicit failure and activation scenarios, while hard recovery objectives remain constraints. Separate scenario components to avoid counting the same replay twice. Include dormant storage, metadata requests, retained history and temporary copies; a sleeping CPU does not eliminate those costs. Optimize subject to semantic validity, tenant budgets, maximum state, freshness, serving latency, recovery limits, and allowed degradation. Cost estimates have ranges/confidence, not invented precision.
 
 Collect update and delete rates, cardinality, key skew, output amplification, reuse count, state bytes, cache hit rate, object request size, and compaction debt. Keep statistics versioned and bounded. The workload optimizer admits a new view against the incremental cost of the whole graph; a locally cheaper plan may be more expensive after losing shared arrangements. Charge back shared costs using a documented policy, without turning billing attribution into a correctness dependency.
 
-Initial adaptation is conservative: scheduling/batching adjustments and explicitly triggered alternative-plan evaluation. G5 automatic replacement requires hysteresis, minimum benefit, cooldown, and a budget for running both versions. Build the replacement from pinned cut C; retain/replay deltas after C; catch up to an exact complete cut V; verify its semantic identity and all required state; atomically switch the catalog's active generation at V. Old subscriptions continue with a compatible logical output stream or receive a documented schema break. Rollback uses retained old state or a rebuild; it cannot assume the previous plan kept advancing after cutover. An adaptive experiment must not exhaust the resources needed to maintain the active plan.
+Initial adaptation is conservative: scheduling/batching adjustments and explicitly triggered alternative-plan evaluation. G5 automatic replacement requires hysteresis, minimum benefit, cooldown, and a budget for running both versions. Build the replacement from pinned cut `C`; retain/replay deltas with epochs `e >= C`; catch up to an exact complete cut `V`; verify its semantic identity and all required state; atomically switch the catalog's active generation at `V`. Old subscriptions continue with a compatible logical output stream or receive a documented schema break. Rollback uses retained old state or a rebuild; it cannot assume the previous plan kept advancing after cutover. An adaptive experiment must not exhaust the resources needed to maintain the active plan.
 
 `EXPLAIN INCREMENTAL` reports algorithm, shared/reconstructed/persisted state, required indexes, expected update and output amplification, uncertainty, retention pins, exact/approximate status, and fallback/rejection conditions. `ANALYZE` must explicitly opt in to executing a bounded sample or reading production telemetry; an explanation request must not trigger unlimited backfill.
 
@@ -176,6 +193,9 @@ Timely's capability model is a useful foundation for proving when no further dat
 | SQL reachability | Real public SQL through binding, planning, execution, persistence, restart, and response encoding. An internal Rust operator is insufficient. |
 | Same-epoch join correctness | Both inputs change, including duplicate insert/delete cancellation and nonempty cross terms. |
 | Nonlinear operators | Zero-crossing transitions, first/last matches, empty global aggregates, top-K replacement after deletions. |
+| Logical MVCC | Exact answers at every advertised retained cut across different physical checkpoint intervals, compaction, crash, and slow-consumer catch-up; explicit failure at uncovered cuts. |
+| Shared scheduling | Fast and scheduled consumers retain compatible cuts without a forced global barrier; bounded history, expiry/resnapshot, and deliberate duplication under SLO pressure. |
+| Early factorization | Grouped-join updates and deletes, enforced uniqueness violations, NULL/decimal limits, historical cuts, restart, and complete lifetime cost against first-order execution. |
 | Time and recursion | No-data timer progress, replay after crash, late input policies, cyclic graphs, recursive deletions, limit exhaustion without partial publication. |
 | Plan replacement | Exact cut alignment under concurrent writes, restart at each phase, old/new schema and subscription compatibility, rollback constraints. |
 

@@ -1,8 +1,10 @@
 # Rockstream 2
 
-**A proposed cloud-native database for shared, durable incremental computation.**
+**A proposed SQL-first streaming database with shared incremental computation and simple operation.**
 
-Rockstream 2 should maintain SQL results over changing data, share compatible computation and state, and scale maintenance and serving independently. Its core contract is simple: every published result equals the declared query evaluated at its declared input cut, within the query's explicit numeric semantics.
+Rockstream 2 should maintain SQL results over changing data, optimize computation and state across the workload, and scale maintenance and serving independently. Its core contract is simple: every published result equals the declared query evaluated at its declared input cut, within the query's explicit numeric semantics.
+
+The working architecture combines DBSP semantics, a lean Rockstream-native runtime, Arrow/DataFusion, SlateDB-backed arrangements and logical MVCC. Cloud operation requires the Rockstream binary and a qualified object store, including metadata; no separate coordination service is required. Eligible deployments should support full suspension and recovery through a documented activation path. These choices and their costs must pass the proposed qualification gates.
 
 **Repository status: design and implementation plan, not an implemented engine.** All APIs, deployment commands, capability targets, and performance numbers in these documents are proposals. No Rockstream 2 performance or production-readiness claim has been measured. This design was prepared on **2026-11-25** against Rockstream commit [`d3f973a`](https://github.com/trickle-labs/rockstream/commit/d3f973a84f4263bedd6505039d7f469d4708c478), whose workspace version is `0.72.0`.
 
@@ -31,7 +33,7 @@ Rockstream 2 should maintain SQL results over changing data, share compatible co
 
 ## Implementation philosophy
 
-Build the semantic kernel and a durable single-node vertical slice first. Qualify shared state and online lifecycle next; then distribute the same execution contracts. Advance factorization, recursion, temporal SQL, and adaptive optimization as separately qualified capabilities. Security, bounded resources, and deterministic failure testing start with the first slice.
+Prototype storage/MVCC, metadata, runtime and full suspension first, then build the semantic kernel and durable single-process slice. Qualify shared state, independent local consumer schedules, online lifecycle and eligible partial aggregation/factorization next; then distribute the same contracts. Broader higher-order maintenance, recursion, temporal SQL and adaptive optimization advance independently. Security, bounded resources, deterministic failures and operational simplicity start with the first slice.
 
 The first production release follows the gates **G0 → G1 → G2 → G3 → G4 → G6**. **G5** is the advanced-capability track; completing every research feature is not a prerequisite for shipping a qualified, deliberately scoped release. See the implementation plan for the exact evidence each gate requires.
 

@@ -36,6 +36,8 @@ Produce a machine-readable migration manifest with the following fields:
 | Applications | Query templates, prepared statements, transaction modes, freshness fences and required wire behavior |
 | Delivery | Subscription consumers/cursors, sink destinations, delivery identities, downstream acknowledgment method |
 | Operations | Current state size, update/deletion rates, peak transaction size, freshness/read objectives and failure model |
+| Suspension | Continuous versus scheduled/on-demand consumers, source-retention headroom, timer/sink obligations, wake trigger, cold-resume budget and rollback availability |
+| Storage/metadata | Source and target durability profiles, qualified object-store conditional-write behavior, protected root namespaces and source-incarnation mappings |
 | Security | Principals, effective grants, secret references, tenant assignments, audit destinations and encryption requirements |
 | Recovery | Old/new replay windows, backups, rollback deadline, failure triggers and stop conditions |
 
@@ -49,7 +51,9 @@ application inventory. [M01], [M02]
 
 **Gate M0:** every production query/connector/delivery mode in the unit has a
 classification; blocked features prevent cutover. Secrets are re-provisioned
-through the target secret manager, not exported as plaintext with DDL.
+through the target's configured secret provider or protected configuration, not
+exported as plaintext with DDL. No external secret-management service is implied
+by the single-binary baseline.
 
 ## 3. Establish one comparable input history
 
@@ -119,6 +123,13 @@ holding it stable; capture or pause logical clock inputs as well. Replay the sam
 finite input prefix into the target. If neither a pinned export nor an exercised
 bounded barrier is available, reconciliation at a common cut is blocked.
 
+The target's logical MVCC can reconstruct a common cut from protected bases and
+timestamped history even when its physical checkpoints occur at different cuts.
+Qualify the advertised coverage for each compared relation; a later checkpoint
+or a retained input log alone does not prove intermediate output history is
+available. Neither matching domain epoch numbers nor shared use of SlateDB
+establishes cross-engine lineage or snapshot compatibility.
+
 Counts, checksums and samples are efficient diagnostics, not final proof of
 equality. Partition hashes can locate mismatches, but mismatched partitions need
 exact row diffs; final qualification requires an exact comparison of the agreed
@@ -130,6 +141,15 @@ large transactions and quiet periods with timers. Include crash/restart, stale
 owner, network partition, source reconnect, object-store delay, compaction, scale
 changes and schema changes supported by the migration contract. Reconciliation
 must occur after faults as well as before them.
+
+If the workload will use suspension, include a full stop/activation cycle and
+loss of all target cloud-profile local caches, then reconcile accepted input,
+published results, retry identities and consumer cursors. Exercise competing
+activations and a paused old owner returning after wake. Verify actual source
+retention and the activation mechanism under the workload's freshness budget;
+do not infer these guarantees from the existing engine's advertised deployment
+model. A continuous-ingest deployment may qualify partial pool suspension
+without qualifying a zero-process state.
 
 **Gate M2:** zero unexplained exact-result differences across the agreed workload
 matrix; every fault was observed to fire; floating-point acceptance is separately
@@ -210,6 +230,12 @@ acceptance signoff. Account for this temporary duplicate cost in the migration
 budget. After signoff, revoke old sink/source credentials, remove obsolete
 consumer registrations and source slots, retire old compute, and release history
 pins in a controlled order. Delete data only under the normal retention policy.
+
+During the rollback window, suspension is permitted only if both the replay
+window and the required rollback recovery time remain satisfied. Keeping the old
+engine current may require live ingestion even when the new engine's serving or
+maintenance pools are idle. Record that cost explicitly; a zero-compute target
+does not eliminate the old deployment's rollback obligations.
 
 The completion record contains exact revisions, catalog mappings, input cuts,
 reconciliation artifacts, measured acceptance results, routing/delivery

@@ -1,25 +1,27 @@
-# ADR 0002: scope publication and make dependency cuts explicit
+# ADR 0002: independent publication groups with compatible logical cuts
 
-**Status:** Proposed. **Date:** 2026-11-25. **Owners:** storage/consistency and runtime roles.
+**Status:** Proposed architectural commitment; implementation unqualified. **Date:** 2026-11-25. **Owners:** storage/consistency and runtime roles.
 
 ## Context
 
-A single cluster-wide progress boundary can couple unrelated workloads. Removing synchronization without a replacement contract can produce torn transactions or joins between individually committed but mutually inconsistent views. Existing Rockstream already has scoped frontier mechanisms; the new design must specify their end-to-end public meaning.
+A global progress barrier couples unrelated workloads. Removing it without another contract permits torn source transactions or inconsistent joins between committed views. Logical MVCC can decouple consumers' schedules while preserving exact read cuts, but it does not remove transaction boundaries or actual data dependencies.
 
 ## Decision
 
-Use a scalar total-order epoch per consistency domain and an exclusive published upper `U`. Complete source transactions are the indivisible input unit. An ingestion domain preserves co-transactional source tables; downstream result domains can independently consume its complete durable history. A publication group waits for all its required participants, and changes to that group are versioned catalog operations.
+Use scalar ordered epochs within a consistency domain. A cut `C` contains epochs `e < C`; computed and durable published uppers are separate. Preserve complete source transactions in an ingestion domain. Every result domain has **one atomic publication group**, and multiple result domains can consume the same durable input/history at different rates. Views requiring joint atomic publication belong to one group; a slow required participant still delays that group. The optimizer cannot silently change its boundary.
 
-Cross-domain dependencies use explicit versioned imports at first. Compatible selected inputs have equal complete transaction boundaries for every shared source incarnation, include dependency closure, and retain their exact versions. Unrelated sources have no inferred global transaction guarantee. Numeric epochs across domains are never compared. If a compatible cut is not retained or cannot be reached, wait or fail; never choose independent latest values.
+Sharing an arrangement does not merge publication groups. Consumers keep independent cursors, maintenance schedules and retention obligations. Certified retained history reconstructs exact logical cuts even if physical checkpoints occur at different times. Missing history, unsupported cuts and quota exhaustion have explicit wait, failure or resnapshot outcomes; sharing cannot promise unlimited free retention.
 
-G2 uses a single domain. G4 adds independently progressing domains and qualified imports. Nested recursion time and arbitrary domain merge/split are later work. Cross-domain atomic writes are rejected initially.
+Cross-domain dependencies use versioned imports. Selected inputs must agree on the complete boundary for every overlapping source incarnation and satisfy transaction/import dependency closure. Every advertised logical cut has a protected mapping to that lineage and its applicable schema/semantics. Unrelated sources have no inferred global transaction guarantee. Numeric epochs in different domains are never compared.
 
-## Alternatives
+G2 uses one domain. G3 qualifies independent local consuming result domains over common input/history. G4 adds distributed groups and general cross-domain imports. Domain merging/splitting, cross-domain atomic writes and arbitrary recursive import cycles are separate work.
 
-A global barrier is simpler and remains the local publication-group mechanism, but unnecessarily couples unrelated pipelines at cluster scale. Fully general vector clocks from day one add complex progress, compaction and query-selection obligations without first proving a benefit. Per-view latest-eventual reads improve apparent latency by weakening semantics; they do not satisfy the intended contract.
+## Alternatives and consequences
 
-## Consequences and evidence
+A global barrier is simpler but delays unrelated workloads. General vector clocks from the outset add complexity before demonstrating value; scalar domain time and explicit lineage are the initial choice. Independent latest values do not meet the promised consistent-read contract.
 
-More domains can increase duplicate imported state and history pins. Explicit source cuts can make a cross-domain query unavailable while each individual view is readable. That is a visible, diagnosable consistency constraint. Shared ingestion does not guarantee every result group publishes at once; applications needing that behavior select one publication group.
+More groups can increase metadata traffic, imported state and retained history. A query can be temporarily unavailable even while each input is individually readable. MVCC improves the chance of finding a common cut; it cannot reconstruct a discarded or semantically invalid result. The cost model may choose isolated physical copies when schedules, history or SLOs conflict.
 
-G0 models input atomicity, import lineage and head transitions. G4 stalls one domain while advancing another, then attempts a shared-source join at mismatched cuts and confirms it waits/fails. The authoritative algorithm and pin requirements live in [consistency and storage](../design/consistency-and-storage.md).
+## Evidence
+
+G0 models complete transactions, independent heads, logical history and import lineage. G3 stalls one local consumer while another advances shared state, then reconstructs a common cut from disjoint checkpoint schedules. G4 repeats the contract across processes and tests incompatible source incarnations and causal cuts. The authoritative selection and pin rules are in [consistency and storage](../design/consistency-and-storage.md); [ADR 0009](0009-logical-mvcc.md) defines the MVCC boundary.
