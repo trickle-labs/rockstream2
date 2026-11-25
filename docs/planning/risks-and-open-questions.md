@@ -28,8 +28,6 @@
 | R20 | Parallel agents duplicate work, diverge contracts, overload CI/review, or accumulate complexity | Ready queue, exclusive issue claims, isolated worktrees, small WIP limit, dependency rules, merge queue, explicit experiment cleanup, measured conflict/rework and lead time | Dispatch + maintainer; G0 onward |
 | R21 | Agent or dependency consumes untrusted instructions, exposes secrets, or changes policy to gain authority | Least privilege, no production secrets/signing keys, protected policy/checkers, independent approvals, scoped budgets, isolation and denial negative controls | Security + maintainer; G0 onward |
 | R22 | Green fast CI conceals regression debt or background evidence becomes stale | Separate runner capacity, exact-revision evidence, prioritized triage/fix/revert, block affected promotion, track verification backlog and escaped defects | Verification + performance; every gate |
-
-|
 | R23 | Broad feature/platform scope or difficult setup prevents a useful first product | Narrow qualified matrix, partner workload selection, fixed golden fixture, measured local quickstart and explicit unsupported boundaries | Product + maintainer; G0/G2/G6 |
 | R24 | Mandatory metadata/pin, object-store, write or recovery cost makes target SLO/economics infeasible | Instrument actual end-to-end paths and resource denominators in G0; compare equivalent profiles, sound amortization or honest target revision | Storage + performance; G0/G4/G6 |
 | R25 | Logical deletion mistaken for erasure, or backup/old worker re-exposes retired data | Authorized retirement/fencing, retention/copy inventory, GC proof, restore reconciliation and explicit residual copies/blockers | Storage + security + operations; G0 design, G2/G6 qualification |
