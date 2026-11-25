@@ -24,6 +24,37 @@ Group sources/views that require transaction atomicity into one migration unit.
 Independent units can move separately; joining an old result and a new result
 without a common cut is not a consistent cross-version read.
 
+Use a strangler migration: first qualify a narrow useful slice with PostgreSQL
+CDC, incremental joins and grouped aggregates, durable publication, consistent
+reads and simple operation. Move selected workloads when their applicable gates
+pass, while other workloads remain on the old engine. Broad feature parity is
+not a prerequisite for that scoped delivery; every feature in a selected unit
+must still have complete correctness, recovery and operational evidence.
+
+### Donor assets and regression transfer
+
+Treat original Rockstream as a source of algorithms, executable specifications
+and historical failures. P0.1 records a versioned donor inventory before porting
+implementation, with original revision/path, contract/bug covered, expected
+result, target contract/test ID, owner, disposition and unresolved semantic gaps.
+
+| Asset | Treatment |
+| --- | --- |
+| SQL and PostgreSQL wire regressions | Reuse where semantics agree; classify intentional differences with independently specified expectations |
+| Deterministic failure scenarios and historical bugs | Port minimized histories and schedules early, with observed fault delivery and negative controls |
+| Batch evaluator and qualification harness | Retain independent expected results and adapt cut/provenance formats; do not share optimized kernels with the oracle |
+| Formal models and counterexamples | Adapt to new publication, ownership, attempt, retention and lifecycle transitions; old proofs do not certify the new protocol |
+| Factorized joins and incremental operators | Selectively port only after semantic side conditions and three-way comparisons are established |
+| PostgreSQL CDC and Kafka components | Audit source identities, complete transactions, preimages, handoff, acknowledgment and failure behavior before reuse |
+| Security and authorization tests | Reuse from the first relevant implementation slice, including tenant sharing/cache boundaries |
+| Existing control plane | Replace with the new metadata/lifecycle contracts; preserve useful failure scenarios |
+| Legacy physical storage formats | Migrate by explicit logical replay or a separately qualified importer; do not inherit compatibility by accident |
+
+Retain donor tests even when their implementation is replaced. A rejected or
+inapplicable test needs an explicit semantic reason and replacement coverage,
+not silent deletion. The [verification architecture](../design/testing-and-verification.md)
+defines the independent three-way comparison required for every migrated capability.
+
 ## 2. Inventory before building
 
 Produce a machine-readable migration manifest with the following fields:
@@ -106,8 +137,19 @@ sinks disabled or pointed at isolated shadow destinations. Backfill a pinned
 snapshot, replay subsequent transactions, and publish only complete target
 versions. Serving traffic continues to use the old deployment during this phase.
 
-At recorded cuts, compare the complete canonical weighted multisets for every
-view in the unit. Normalize only documented representation differences: decimal
+At every selected recorded cut, compare the complete canonical weighted multisets
+for every view in the unit through three paths: original Rockstream, Rockstream 2
+and an independent batch evaluator over the same captured source history.
+PostgreSQL is a reference for its declared compatible subset; use independent
+explicit expectations for intentional dialect differences. The evaluator must
+not reuse the incremental rewrites or optimized kernels under test. Agreement
+between the two related engines does not establish correctness, and a two-of-three
+vote cannot resolve a mismatch. Classify inherited bugs, new regressions, intended
+semantic changes and oracle defects, preserving all transcripts and expected-result
+justification. Missing comparison coverage blocks promotion of that migrated
+capability until it is supplied or the unit's scope is explicitly narrowed.
+
+Normalize only documented representation differences: decimal
 encoding, timestamps/timezone display and explicitly defined collation behavior.
 Do not normalize away duplicate multiplicities, NULL differences, missing rows,
 ordering required by the query, or numeric overflow. For Top-K, compare selected
@@ -152,7 +194,8 @@ model. A continuous-ingest deployment may qualify partial pool suspension
 without qualifying a zero-process state.
 
 **Gate M2:** zero unexplained exact-result differences across the agreed workload
-matrix; every fault was observed to fire; floating-point acceptance is separately
+matrix and all applicable three-way comparisons; every fault was observed to fire;
+intentional semantic differences and floating-point acceptance are separately
 recorded. **Gate M3:** the target meets the workload's freshness, serving,
 resource, cost and recovery acceptance criteria during a representative peak
 and a sustained run. A passing synthetic fixture cannot substitute for an
@@ -187,6 +230,11 @@ snapshot as a continuation of the old change stream.
 Never run both generations against the same effectful destination without an
 explicit downstream deduplication/fencing contract. Shadow delivery must use an
 isolated namespace or a non-effectful transcript recorder.
+
+The migration manifest names one authorized external-effect owner for each
+destination and cut range. Parallel computation and reconciliation never grant
+the shadow engine effect authority. Any shared-destination exception must itself
+be separately qualified and explicitly authorized before the migration.
 
 For final handoff, stop old delivery after complete cut `D`, resolve any ambiguous
 old destination commit, and confirm its durable acknowledgment. Record the
@@ -230,6 +278,14 @@ acceptance signoff. Account for this temporary duplicate cost in the migration
 budget. After signoff, revoke old sink/source credentials, remove obsolete
 consumer registrations and source slots, retire old compute, and release history
 pins in a controlled order. Delete data only under the normal retention policy.
+
+Before switching clients, demonstrate the rollback path against the actual
+old/new binaries, retained history and destination contract at a complete cut.
+Record a measured catch-up/restore budget, retained replay horizon and expiry
+deadline; monitor them throughout the rollback window. If retention or format
+changes invalidate rollback, stop further cutover and report the explicit
+forward-repair or resnapshot path. An old process left running without adequate
+history and compatibility is not evidence of a usable rollback.
 
 During the rollback window, suspension is permitted only if both the replay
 window and the required rollback recovery time remain satisfied. Keeping the old
