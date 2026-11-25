@@ -6,6 +6,8 @@
 
 The working choice is a lean **Rockstream-native Rust runtime**, with Arrow weighted batches, DataFusion for the SQL frontend and selected expression kernels, and Tokio for asynchronous I/O and task coordination. DBSP defines the incremental semantics; choosing that model does not require adopting Feldera's runtime. Reuse qualified algorithms and test infrastructure from the existing Rockstream selectively. The [G0 comparison](../adr/0005-runtime-selection.md) must still be able to overturn this choice in favor of Timely/Differential or suitable DBSP components if integration, correctness, or total cost warrant it.
 
+Begin the native prototype through the [component disposition register](../planning/migration.md#donor-assets-and-regression-transfer): extract or adapt qualified donor components, replace incompatible mechanisms, and carry independent regression checks across both. This remains one native candidate with explicit owned progress and recovery responsibilities. Keep required operator state durable through suspension until an exact protected reconstruction recipe meets its resource and recovery budgets.
+
 The initial execution kernel has a deliberately bounded scope:
 
 | Boundary | Initial contract |
@@ -103,6 +105,8 @@ Apply these bounds at the [physical storage group](consistency-and-storage.md#53
 ### Consumer retention contracts and sharing cost
 
 Register each consumer's contract before admitting its dependency. The contract contains its freshness target and scheduling mode; required logical cut/coverage and replay floor; maximum history age and retained bytes; maintenance, reconstruction and recovery budgets; and the allowed action at exhaustion. Real-time, standard, analytical, on-demand and historical profiles may supply defaults, but their durations and service levels are explicit configuration, not guarantees implied by a profile name. Historical obligations receive an independent budget even when current-state maintenance is shared.
+
+Admission first checks full semantic and security compatibility, then evaluates whether the combined scheduling and retention obligations fit the shared placement's economic and physical budgets. Different cadences and retention windows are supported; profile names do not define sharing boundaries. Choose an isolated placement before attaching a consumer whose obligations would exceed the shared budget, or defer/reject if its isolated placement cannot be reserved either. Reserve peak build/replay overlap, retained old history, rollback and recovery capacity through the lifecycle admission path. Recheck policy changes against the live dependency state and preserve existing pins and promises while an admitted isolation or retention transition completes.
 
 The shared compaction boundary must preserve the earliest still-promised cut and every other authoritative read, build, backup and recovery obligation. Charge additional retained history to the consumer that requires it, while enforcing a physical pool limit regardless of attribution. Exceeding a budget does not itself revoke a promise: obtain capacity, isolate the consumer, block new admissions/renewals, or perform an explicitly permitted expiry and resnapshot. Report the last valid boundary and unavailable coverage. Never silently advance a consumer cursor or delete required history to meet a cost target.
 

@@ -38,6 +38,35 @@ and historical failures. P0.1 records a versioned donor inventory before porting
 implementation, with original revision/path, contract/bug covered, expected
 result, target contract/test ID, owner, disposition and unresolved semantic gaps.
 
+Use this as a component disposition register for the first native prototype.
+Choose **reuse, extract, adapt, replace or reject** per component, with its exact
+donor revision/path and provenance/license notices; target semantic, lifecycle,
+security and resource contracts; inherited runtime/storage dependencies; required
+changes and replacement rationale; transferred tests and independent oracle; and
+observed evidence or remaining qualification gaps. Prefer selective extraction or
+adaptation where it reduces owned complexity while satisfying those contracts.
+Retain required attribution for transferred code. A disposition is a proposal
+until its checks pass; previous production use and matching old/new outputs
+alone cannot qualify inherited behavior. This register feeds the native candidate
+in [P0.3](../adr/0005-runtime-selection.md) and bounds porting to the golden slice;
+it does not require a third runtime or a parallel full-engine rewrite.
+
+The [current-system audit](../research/current-system-audit.md#4-reuse-adapt-and-replace)
+seeds the following dispositions at donor revision
+`d3f973a84f4263bedd6505039d7f469d4708c478`. These are starting decisions for the
+bounded prototype. P0.1 must resolve the actual dependency closure, notices,
+named test IDs and independent expected results before accepting a port.
+
+| Audited donor entry point | Seed disposition | Target contract, coupling to inspect and acceptance |
+| --- | --- | --- |
+| [`arrangement.rs`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-types/src/arrangement.rs) | Adapt canonical descriptors; replace hash-only reuse decisions | Preserve semantic/security identity while separating physical layout. Inspect encoding/version assumptions; force digest collisions and semantic/security differences to demonstrate full-descriptor admission. |
+| [`trace.rs`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-storage/src/trace.rs) and [`arrangement_catalog.rs`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-storage/src/arrangement_catalog.rs) | Extract/adapt trace algorithms and lifecycle cases | Inspect consumer ownership, reclamation and storage coupling. Require authoritative root/pin integration, exact logical cuts under independent schedules and recovery after drop/GC; the old catalog cannot independently authorize the new publication protocol. |
+| [`factorized.rs`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-ops/src/factorized.rs) | Extract/adapt the eligible factorized kernel | Map weighted batches, numeric semantics and auxiliary state into the new IR and recovery contract. Compare first-order, factorized and independent batch results under simultaneous changes, duplicates and deletions; retain full auxiliary-state cost. |
+| [`frontier.rs`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-control/src/frontier.rs) | Adapt membership checks and regressions; replace publication wiring | Inspect old control/shard dependencies. Separate computed progress from durable publication and reject stale scope/generation/incarnation reports, omitted work and delayed abandoned attempts under the new one-interval contract. |
+| [`shard_db.rs`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-storage/src/shard_db.rs) | Extract useful batching/encoding lessons; replace incompatible epoch/commit authority | Audit SlateDB API and physical-format dependencies rather than inherit them. Require exact-parent reopening, protected logical history and speculative-attempt isolation; qualify any transferred implementation under P0.2. |
+| [`rockstream-sim`](https://github.com/trickle-labs/rockstream/tree/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-sim/src) and [`formal`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/formal/README.md) | Reuse failures and obligations; adapt environment/model bindings | Inspect assumptions about old transition identities and schedules. Run new production logic under controlled faults with independent expected state, replayable histories and delivered-fault negative controls; old proof results cannot qualify new transitions. |
+| [`raft.rs`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-control/src/raft.rs) | Reject as a replicated metadata log; reuse election/fencing failures | The audited module provides election rather than catalog/publication log replication. Keep the single object-root baseline; any later consensus alternative must qualify a mature replicated-log implementation and its complete stop/restart contract. |
+
 | Asset | Treatment |
 | --- | --- |
 | SQL and PostgreSQL wire regressions | Reuse where semantics agree; classify intentional differences with independently specified expectations |
