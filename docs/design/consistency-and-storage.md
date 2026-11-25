@@ -220,6 +220,14 @@ Abandonment prevents publication and leaves cleanup to the normal intent/retenti
 
 SlateDB shallow clones share existing SSTs but have independent manifests/WAL, may copy referenced WAL SSTs, and retain external checkpoint dependencies. Administrative clone creation does not flush a live source writer; use an explicit checkpoint containing the required durable writes. Immutable attempt isolation is a Rockstream hypothesis, not a transaction facility supplied by SlateDB. Revalidate all API details at the selected revision. [S9]
 
+### 5.3 Storage-group ownership and interference
+
+A result domain is an atomic publication boundary; a storage group is a physical ownership and scheduling boundary. Distinct domain generations do not authorize concurrent independent writers to one mutable SlateDB database/branch. Each group has one fenced writer authority and a serialized preparation/checkpoint schedule under the selected adapter protocol. Work names both its domain attempt and group generation. Ownership-changing and publication transitions validate the applicable fences together; a new group owner restores each member's committed closure rather than treating one member's latest checkpoint as every member's parent. Group takeover may pause all colocated members and must be reported as their shared recovery scope.
+
+Co-batch only already eligible preparations whose exact memberships remain independently selectable. A group may checkpoint several domain cuts without requiring unrelated domains to reach a common logical cut. Physical writer serialization can still delay one member behind another; bound batch-fill delay, checkpoint wait, queued bytes and per-member I/O work, with reserved capacity for control, recovery and compaction. If the selected backend cannot enforce the admitted interference envelope, use separate storage groups and account for their additional state and requests. Fair scheduling does not promise progress during an unavailable storage service.
+
+P0.2/P0.8 compare grouped and isolated placement with one fast consumer, a history-pinning consumer and a large backfill or compaction load. Under the declared offered load, measure per-domain publication/read tails, checkpoint wait, retained physical bytes, recovery scope and the full cost of isolation. Inject writer loss and a delayed old writer while another member publishes; verify every member's exact parent and promised history after takeover. This evidence distinguishes independent publication from resource isolation without adding a global logical barrier.
+
 ## 6. Publication protocol
 
 A version manifest contains domain/run/attempt identity; parent version; `[L,U)`; durable published upper, logical `since` and supported cut coverage; complete source-cut and imported-history lineage; plan/catalog/ownership revisions; arrangement roots; timestamped durable output-delta roots; input-log references; complete expected partition coverage; schema and codec versions; and reconstructibility descriptors. Unchanged arrangements reuse protected parent references. The graph is acyclic and integrity checked.
@@ -315,6 +323,18 @@ Fresh admission requires an active group; existing registered readers can valida
 Repeatable transactions retain one authorized token and its guard for their declared lifetime. A resumable or transferable token requires its own durable pin or an explicitly modeled atomic protection handoff; a process-local registration cannot authorize another server. Historical reads acquire appropriate durable protection, either a dedicated pin or an eligible already-protected group, before accessing the requested exact cut. Cancellation drops that reader's guard and releases dedicated protection when safe; it does not release a group used by other readers. Subscription cursor registration retains its separate snapshot/tail atomicity requirement.
 
 This removes per-query **writes on the covered-snapshot path**, not required authoritative reads. Latest selection and final authorization checks still contribute to latency, object requests and the aspirational 5 ms server-read metric. They may be coalesced only when every included request has a valid selection/completion linearization point within its own operation. The initial implementation assumes no clock-based cache lease or revocation shortcut. If full-path latency misses the profile, narrow the measured envelope or evaluate the separately qualified consensus profile; do not relabel stale reads as latest.
+
+### 8.2 Read latency and availability envelope
+
+Qualify the actual critical path separately for these policies, including warm cache hits:
+
+| Policy | Selection requirement | Authority still required |
+| --- | --- | --- |
+| Latest committed | Linearizable selection of the latest compatible published cut during the request | Valid protection before access and current pin/authorization validation after consuming bytes |
+| Explicit allowed-stale | An older certified cut permitted by the requested policy | The same protection and completion validation; stale data permission does not permit stale access rights |
+| Historical or pinned repeatable | Exact previously selected cut with retained coverage | The same protection and completion validation on each token use or completed stream unit |
+
+In the object-native profile these checks can put remote metadata reads on the warm read path. Pin reuse does not establish a metadata-independent read service. If authority is unavailable, cached bytes or a previously signed token cannot turn an incomplete read into success. P0.4 records the ordered critical-path operations, their permissible coalescing, full request distributions and outage outcomes for each policy; it must not subtract validation to meet a latency target. A different revocation/lease contract requires a separate explicit design and qualification decision.
 
 ## 9. Retention, compaction, and garbage collection
 
