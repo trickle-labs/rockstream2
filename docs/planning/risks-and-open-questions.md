@@ -31,6 +31,7 @@
 | R23 | Broad feature/platform scope or difficult setup prevents a useful first product | Narrow qualified matrix, partner workload selection, fixed golden fixture, measured local quickstart and explicit unsupported boundaries | Product + maintainer; G0/G2/G6 |
 | R24 | Mandatory metadata/pin, object-store, write or recovery cost makes target SLO/economics infeasible | Instrument actual end-to-end paths and resource denominators in G0; compare equivalent profiles, sound amortization or honest target revision | Storage + performance; G0/G4/G6 |
 | R25 | Logical deletion mistaken for erasure, or backup/old worker re-exposes retired data | Authorized retirement/fencing, retention/copy inventory, GC proof, restore reconciliation and explicit residual copies/blockers | Storage + security + operations; G0 design, G2/G6 qualification |
+| R26 | Individually viable components fail together, or shared physical writers hide domain coupling and peak lifecycle cost | P0.9 and component owners produce the joint G0 record on one selected path: mixed reads/maintenance/compaction, independent domains, slow consumers, reserved build overlap and cold recovery; preserve failed combinations and narrow or change them through review | Verification + storage + runtime; G0 joint choice, G3/G4 qualification |
 
 ## 2. Open choices that need evidence, not another abstract architecture
 
@@ -80,5 +81,7 @@ The design also constrains default safety behavior. Missing source history stops
 ## 5. Decision process
 
 Assign one owner and due gate per open item. Before building a large dependency around it, record alternatives, fixed requirements, experiment, outcome and the affected ADR. A failed experiment is a useful result: narrow scope, change the component or revise the workload promise through review. Use the predeclared pass/fail and fallback rules in [qualification](qualification.md#g0-feasibility-decisions); distinguish throughput failure, coordination-latency failure, storage-layout cost, runtime burden, sharing cost and ineligible hibernation rather than treating them as one architectural verdict. Preserve the failed profile and rerun any changed candidate against the same correctness contract. Do not silently turn an uncertainty into an implementation assumption. No performance failure authorizes weaker publication, fencing, authorization, source-transaction or retention guarantees.
+
+Component decisions remain conditional on the [joint G0 evidence](qualification.md#joint-g0-feasibility-record). Link the selected combination and its residual limits to the [partner decision records](requirements.md#1-users-and-workloads); a favorable isolated benchmark or optimistic optimizer estimate cannot close a workload-level risk.
 
 Critical safety disagreements block the affected implementation until a counterexample is resolved. Cosmetic preferences do not. Reopen a decision only when new workload evidence, component constraints or a concrete failure invalidates its assumptions. The [implementation plan](implementation-plan.md) names the work packages that supply this evidence.

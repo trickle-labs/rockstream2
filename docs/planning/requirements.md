@@ -17,6 +17,19 @@ Initial design partners should supply at least three concrete workloads: a trans
 
 Start with the narrow product and [golden workload W1-G](implementation-start.md), not speculative feature breadth. P0.5 must identify concrete design-partner workload manifests and prioritize their required capabilities; the synthetic fixture is not partner evidence. Preview and production support envelopes are declared separately; G6 remains required for production.
 
+For each partner workload, keep one versioned decision record that makes the evidence change implementation order:
+
+| Decision field | Required content |
+| --- | --- |
+| User outcome and baseline | Named user job, current system/revision, migration reason and a repeatable comparison |
+| Frozen contract | SQL/query shapes, source/update distribution, freshness/read SLOs, history, recovery and availability requirements |
+| Cost and limiting resource | Measured dominant work and full-cost breakdown, with estimates and missing evidence labelled |
+| Minimum capability set | Required operators/connectors and owning work IDs; identify any narrowly scoped G5 subset needed for that workload |
+| Protected cases | Workloads, skew/delete cases and operational obligations whose predeclared regression limits must hold |
+| Decision | Proceed, narrow or stop, with owner, evidence and the next falsifiable acceptance criterion |
+
+Choose one initial user journey to order the first complete slice while retaining the three partner workload classes and the G6 two-workload business gate. A missing outer join, DISTINCT or Top-K requirement can reorder an existing capability package after its prerequisites and qualification are met; it does not justify implementing all of G5. Keep the declared success targets below until evidence supports a reviewed change.
+
 ## 2. Priorities
 
 **P0: semantic correctness, durable acknowledgements, consistent visibility, recovery, explicit support boundaries, bounded resource behavior, and simple operation.** A faster result that silently changes the query, loses acknowledged input, drops a row, or mixes snapshots fails qualification. The supported cloud baseline must run with Rockstream binaries and a qualified object store, with no mandatory etcd, ZooKeeper, Redis, PostgreSQL catalog, or dedicated always-on control tier. Eligible deployments must be able to suspend all Rockstream compute and recover from durable state; this is an early design requirement.
@@ -41,7 +54,7 @@ Engineering quality, maintainability, simplicity and low issue-to-merge lead tim
 | FR-08 | Qualify PostgreSQL CDC and Kafka inputs; provide Kafka delivery with an explicit guarantee tier | G3 | Live connector failover, source truncation, large transaction and sink-ambiguity tests |
 | FR-09 | Distribute independently progressing result domains and independently size serving/maintenance pools | G4; local independent groups in G3 | Stalled domain isolation and concurrent query-load qualification |
 | FR-10 | Reassign virtual partitions safely; split/merge only at a versioned routing boundary | G4 | Old-owner resurrection, mixed-routing, cold-restoration and scale tests |
-| FR-11 | Explain maintenance strategy, retained state, reuse, cost estimates and freshness blockers | G3–G4 | Explain and system-table assertions tied to executed plans |
+| FR-11 | Explain maintenance strategy, retained state, reuse, cost estimates and freshness blockers; advise on a bounded set of eligible workload-level alternatives | G3–G4 | Explain and system-table assertions tied to executed plans; eligibility and rejection reasons, uncertainty, full changeover cost and estimated-versus-observed resources; automatic changes remain P5.6 |
 | FR-12 | Add advanced SQL/algorithms without changing the semantic or publication kernel | G5 | Feature-specific oracle, state and performance promotion gate |
 | FR-13 | Operate rolling upgrades, disaster restore, failover and quotas | G6 | Automated operational drills against supported profiles |
 | FR-14 | Preserve exact logical MVCC cuts independently of physical checkpoint cadence | G2; shared-consumer qualification in G3 | Distinct computed/published uppers, durable base plus timestamped history, exact reconstruction and explicit unavailable-history errors |
@@ -98,7 +111,7 @@ Every result specifies workload, commit, hardware, topology, data scale, source/
 | Sharing | ≥ 2× lower maintained-state bytes on the designated 100-view overlapping workload; pursue 10× on favorable workloads | Include retention, catalog, CPU and catch-up cost; 10× is a stretch goal, not generic compression |
 | Cost | ≥ 30% lower total cost per million correct durable changes on two chosen design-partner workloads | Proposed business gate; both systems meet identical semantics, SLO, availability, serving and retention constraints |
 | Mixed serving | Maintenance qualified throughput decreases by ≤ 10% under the specified isolated read-pool load | Includes object-store/cache/network contention; hardware and read QPS frozen in profile |
-| Failover | Published results remain readable when serving compute and their protected snapshot are available; recovery target established from measured retained state | Working-set size, metadata recovery/contention and replay volume determine RTO; no universal cold-start number |
+| Failover | Published results remain readable when serving compute, protected data and the authoritative metadata/authorization checks are available; recovery target established from measured retained state | Allowed-stale and pinned reads still require successful completion validation. Working-set size, metadata availability/contention and replay volume determine the envelope; no universal cold-start number. |
 | Idle operation | Zero Rockstream processes for an eligible dormant workload, with exact recovery after reactivation | Publish cold-resume latency, replay/catch-up cost, remaining storage/source costs and the activation mechanism; continuous-ingest profiles may retain an ingestion process |
 | Long-running stability | 72-hour mixed-load soak with bounded backlog, compaction debt, history and memory | Corrections and restarts included; no hiding growing debt after a short peak |
 | Capacity | State beyond RAM in the first cloud release; petabyte scale as a long-term qualification ladder | Test 1×, 4× and 10× worker RAM before claiming storage independence; no PB-scale claim from extrapolation |
@@ -106,6 +119,8 @@ Every result specifies workload, commit, hardware, topology, data scale, source/
 G0 instruments full-path latency and resource/cost feasibility before adopting targets. Measure actual end-to-end distributions and distinguish queue, object requests/CAS, computation, durability, pin validation, storage, serialization and network. Do not sum component percentiles or hide mandatory work. Establish comparable CPU, memory/state, write, network/request, recovery and dormant-cost baselines using [implementation start](implementation-start.md); adjust proposed profiles/targets from evidence without weakening guarantees.
 
 The [six G0 feasibility decisions](qualification.md#g0-feasibility-decisions) make batching/read-pin amortization, clone-versus-attempt isolation, checkpoint amortization, bounded reconstruction, runtime selection, donor correctness, sharing economics and full hibernation explicit requirements. Freeze numeric profile budgets before confirmatory runs and record a fallback for each failed or inconclusive candidate. Logical epochs need not correspond one-to-one with physical checkpoints or metadata writes. This is an optimization obligation under the existing invariants, not permission to acknowledge undurable state or drop promised history.
+
+The selected components must also pass the [joint G0 feasibility record](qualification.md#joint-g0-feasibility-record) at one declared workload/profile. Separate component wins cannot establish a combined throughput, latency, capacity or cost claim. Include shared physical writer/checkpoint interference and reserved peak lifecycle capacity as well as steady-state savings.
 
 Use both **source-to-publication freshness** (when an authoritative source commit time is trustworthy) and **durable-input-to-publication latency** (Rockstream-controlled boundary). Missing source timestamps are unknown, not zero lag. Client visible latency includes waiting, protocol, and network. Report stalled epochs, oldest incomplete transaction, rejected inputs, source-retention headroom, and output-amplification tails beside percentiles.
 

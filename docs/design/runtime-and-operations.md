@@ -70,11 +70,21 @@ Backpressure must avoid circular resource waits. Reserve control/progress capaci
 
 An error after durable ingestion can stop maintenance without undoing the source's acknowledged input. The view exposes a blocked state and last good version. Repair changes the responsible query/schema through a validated replacement, or rebuilds at a later complete cut containing all accepted inputs under an explicit repair contract. A later compensating row alone does not make ordinary replay advance past an earlier failing epoch; intermediate results that could not be computed remain unavailable. The system never silently skips the offending event. Poison records and quarantines require a documented semantic policy and audit record, not an invisible dead-letter shortcut.
 
+### Capacity for builds and changes
+
+Before admitting a backfill, replacement, repartitioning or consumer-isolation build, reserve its peak coexistence budget across memory, durable bytes, I/O, metadata work and replay capacity. Count the physical union of current state, replacement state, newly retained input/history, compaction workspace, rollback roots and recovery headroom; do not double-count shared objects or assume old history disappears at activation. Include the time needed to catch up under ongoing admitted input and the source-retention window. A cheaper steady-state layout is inadmissible when its transition cannot fit.
+
+Reservations belong to the durable build/intent lifecycle, so restart cannot forget an admitted obligation or admit overlapping builds against the same free capacity. Reconcile estimates with measured consumption and bound concurrent builds. Keep control/recovery capacity available; pause or cancel optional work through safe cleanup, reduce new admission, or obtain capacity when actual growth exceeds the reservation. Cancellation does not release bytes still protected by another obligation, and accepted input remains recoverable. Expose which retained roots, replay deficit or capacity bound prevents a proposed change and the declared exhaustion action.
+
+P0.2/P0.8 and G3 lifecycle tests include an isolation/build that appears cheaper after cutover but cannot fit its old-history tail and replacement overlap. The admission decision must reject or defer it before exhausting the pool; test restart with the reservation outstanding and verify that other admitted work retains its reserved capacity. Resource estimates are not a proof of bounded future input, so enforce the admission limits throughout the transition.
+
 ## 3. Scheduling and elasticity
 
 Start with weighted fair scheduling across tenants and resource pools, then use freshness slack within a tenant's admitted budget. Favor a dependency on the critical path over a downstream task that cannot yet publish. Aging prevents starvation. Priority does not override durable ordering or memory admission.
 
 Schedule the shared workload graph, rather than assigning one isolated always-running circuit to every view. Each consumer records its own next required logical cut, retained-history obligation, publication group, and maintenance policy. An arrangement can continue to advance for a fast consumer while another reads an older retained cut. Sharing an arrangement does not add an atomic publication barrier between unrelated groups. Actual dependencies and explicitly grouped transaction visibility still constrain progress. Sharing is optional: use isolated state when its lifetime cost or failure/SLO isolation is better.
+
+Apply these bounds at the [physical storage group](consistency-and-storage.md#53-storage-group-ownership-and-interference) as well as the task queue. A backend writer, checkpoint or compaction bottleneck can couple otherwise independent domains. Attribute wait and service time to the group and affected members; a separate serving CPU pool does not remove shared storage contention. Select isolation only when its reserved transition and retained-history cost fit, and report residual shared metadata/storage dependencies after the move.
 
 ### Consumer retention contracts and sharing cost
 

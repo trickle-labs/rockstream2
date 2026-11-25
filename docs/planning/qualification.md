@@ -134,6 +134,8 @@ An independent qualification checker must reject deliberately corrupted evidence
 20. A sharing comparison omitting slow-consumer history or split/rebuild/rollback cost, or a split that drops a still-promised cut.
 21. An isolation activation that accepts stale equality evidence after the live head/cursor advances, regresses the cursor or emits a previously authorized effect again.
 22. A split certified only by endpoint equality that releases older promised history or operator recovery dependencies, including after the other consumers drop and GC runs; a cost result hiding the necessary retained old-history tail.
+23. Separate component runs with different configurations, loads or guarantees presented as a successful joint G0 run, or a selected combination promoted despite missing combined-path evidence.
+24. An optimization justified by observed uniqueness rather than an enforced semantic condition, or an estimated saving presented as a measured result while omitting build overlap and still-protected old state.
 
 Checker logic consumes captured input/output, source cuts, process identities, backend evidence and traces; it must not accept the implementation's own `correct=true` or `fault_injected=true` fields without verification. Corrupt one field at a time to prove the evidence gate notices it.
 
@@ -193,6 +195,28 @@ Across all candidates, require zero observed semantic, durability, authorization
 
 For metadata, pin amortization removes routine durable writes for readers that reuse an eligible group; it does not remove the linearizable latest-selection point or final protection/authorization check. For storage, amortization must preserve exact cut coverage and immutable attempt selection; fewer checkpoints cannot hide speculative state. For sharing, account for history retained *because of* each consumer and for the cost of undoing sharing. Report logical-operation and physical-operation denominators separately throughout.
 
+### Joint G0 feasibility record
+
+The six component decisions must also fit **one measured operating envelope**. P0.9 owns the combined harness and evidence record with the P0.1/P0.2/P0.3/P0.4/P0.7/P0.8 owners; this is acceptance under existing work IDs, not a seventh architecture project. Individually passing experiments cannot establish that the selected runtime, metadata protocol, storage layout, reader protection and consumer policies compose safely or economically.
+
+Sequence the work to keep G0 bounded:
+
+1. Use the three initial lanes and focused models/probes to reject unsuitable primitives and narrow candidates. Preserve the binding, comparable runtime and storage experiments; do not build every possible component combination.
+2. Connect the finalists through the same narrow durable W1-G path and a versioned generated extension. Reuse production-intended transitions, identities and state representations across admission, maintenance, publication, reading, compaction and recovery. Record temporary adapters and missing public paths.
+3. Reuse that path for mixed-load, sharing-scale and cold-cycle evidence. The 100/1,000-view P0.8 comparisons remain required; small probes sequence them rather than waive them. Retire rejected prototypes after the recorded decision.
+
+A full SQL frontend, complete pgwire product, broad connector matrix, general distributed scheduler, recursion and automatic replanning are not prerequisites for this experiment. Prototype independent local consumers without declaring G3 support; later gates still qualify the complete public and distributed paths. Timebox the experiment and its remediation under the existing complexity and compute budgets.
+
+| Combined-path case | Required evidence |
+| --- | --- |
+| Durable golden path | Complete normalized transactions change both join inputs; durable acceptance, exact-parent maintenance, complete publication and protected reads use the selected components together. Independently compare every promised cut, including empty and deleted-group results. |
+| Mixed work and physical coupling | At a fixed offered load, run maintenance, reads, consolidation and a bounded build/catch-up together. Use two independently advancing result domains and a slow consumer on the selected physical placement. Retain the P0.2/P0.8 grouped-versus-isolated comparison for compatible arrangements; an isolated fallback is eligible when grouping misses its envelope. Measure per-domain queue/wait and freshness plus residual writer/checkpoint/compaction interference; no hidden global publication barrier. |
+| Cross-boundary failures | Exercise lost publication response followed by a later root revision, abandoned preparation, reader admission/revocation during compaction, and complete process/cache loss with stale or competing activation. Verify that faults fire and recovery uses the exact committed lineage. |
+| History and capacity | Verify every promised historical cut after compaction, isolation and cold reopen. Account for current state, timestamped history, auxiliary state, build/replay overlap, retained old tails, rollback roots and recovery headroom. Demonstrate safe rejection/deferment of a lifecycle operation that cannot reserve its peak budget. |
+| One comparable envelope | Freeze numeric combined-load limits before confirmatory runs. Record actual end-to-end freshness/read distributions, achieved throughput, errors/timeouts, peak memory/state, requests/bytes, compaction/replay debt and cold recovery/full cost in one versioned bundle. Component timings remain diagnostic; they cannot be spliced into a system result. |
+
+Record the exact chosen revisions/configuration, workload and policy hashes, component verdicts, joint verdict, measured limiting resource, residual gaps, owner and affected ADR decisions. A failed or inconclusive joint run blocks the selected combination even if every isolated candidate passed. Remediate, select another qualified combination or narrow the proposed profile through review, then rerun the affected joint cases; preserve the failed record. Neither a narrower profile nor a G0 prototype can waive the durable golden slice's safety conditions. G0 closure selects a feasible direction; it does not establish a production SLO or execute G1–G6 on paper.
+
 ### Early feasibility and user experience
 
 Run the G0 full-path latency/resource experiments in [implementation start](implementation-start.md) before promoting SLOs or platforms. Instrument actual metadata/pin paths, storage amplification, runtime and cold activation; record raw end-to-end observations, errors and predeclared workload/decision criteria. G2 measures the prepared local quickstart through authenticated SQL, correct initial view and observed update after required publication wait, with installation and cold starts separate. Capture unsuccessful setup attempts. G3–G6 extend to connectors, cloud profiles and operational diagnosis.
@@ -207,12 +231,12 @@ The implementation will define and version a machine-readable bundle with at lea
 | --- | --- |
 | Identity | Engine/repo commit, binary hash, dependencies, config hash, checker version, measured-vs-fixture provenance |
 | Environment | Cloud/region/zone topology, instance/storage/network types, all Rockstream process IDs/roles, failure profile, object-store conformance profile, source/sink versions, activation mechanism |
-| Workload | Query/generator hashes, semantic profile and dialect exclusions, donor/oracle versions, seed, input snapshot/transaction manifest, source cuts, amplification, per-consumer retention/scheduling budgets, sharing/isolation baseline |
+| Workload | Query/generator hashes, semantic profile and dialect exclusions, donor/oracle versions, seed, input snapshot/transaction manifest, source cuts, amplification, per-consumer retention/scheduling budgets, sharing/isolation baseline, strategy/eligibility contract IDs |
 | Time | Warmup, steady-state interval, repetitions, clocks, fault and recovery timeline |
-| Observations | Raw transcripts/references, logical cuts/coverage, metadata revisions and operation outcomes, logical operations versus physical reads/writes/CAS, batch/group/checkpoint reuse, history/reconstruction/compaction debt, latency/errors, IO/network/resources and active/dormant process counts |
+| Observations | Raw transcripts/references, logical cuts/coverage, metadata revisions and operation outcomes, logical operations versus physical reads/writes/CAS, batch/group/checkpoint reuse, history/reconstruction/compaction debt, latency/errors, IO/network/resources and active/dormant process counts; per-domain physical-group interference, peak lifecycle overlap and predicted versus observed costs |
 | Faults | Requested fault, verified target/event, expected invariant, observed recovery and loss/duplicate checks |
 | Cost | Billable quantities, prices/date, included services, attribution, headroom and total |
-| Verdict | Predeclared profile/limits/decision rubric, exact comparisons, negative controls, pass/fail/inconclusive, unresolved defects/gaps, fallback/ADR decision, reviewer identity |
+| Verdict | Predeclared profile/limits/decision rubric, exact comparisons, negative controls, pass/fail/inconclusive, component and joint G0 verdicts where applicable, unresolved defects/gaps, fallback/ADR decision, reviewer identity |
 
 Protect evidence against accidental overwrite and include checksums. For agent-led development, record the issue/PR, commit, implementing and independently reviewing identities, approved risk tier, commands, actual observations and applicable authorization. CI-produced artifacts and independent checking, not agent self-report, establish the verdict; do not store secrets or unnecessary private prompt histories. A provenance hash supports reproducibility; it does not replace an independent checker or trustworthy observation. Verification tooling should be usable outside the tested cluster.
 

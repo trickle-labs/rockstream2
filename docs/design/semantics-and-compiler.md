@@ -138,6 +138,20 @@ The actual semantic algebra remains small. `Arrange` changes representation, not
 
 Every rewrite is annotated with preconditions: determinism, exact arithmetic, uniqueness/functional dependencies, collation equivalence, nullability, and multiplicity behavior. Constraints used for correctness must be enforced or certified from a trusted source contract. Observed uniqueness statistics are insufficient. Rewrites preserve both results and relevant error semantics. Serialized IR records a version and validation digest; deserialization revalidates contracts rather than trusting persisted executable plans.
 
+### Executable strategy contracts
+
+Represent each admitted rewrite and physical strategy with a small versioned, machine-readable contract used by planning, diagnostics and verification. Start with the rules actually implemented in G1/P3.7/P3.8; this is neither a second rule engine nor a requirement to formalize every optimizer theorem before the first slice. The record must distinguish facts that authorize a transformation from statistics that only estimate its cost.
+
+| Contract field | Required content |
+| --- | --- |
+| Identity and eligibility | Stable rule/strategy ID and version, input pattern, semantic profile, supported capability combinations and qualification evidence. |
+| Semantic conditions | Types, NULL/error/multiplicity laws, determinism and required keys/dependencies; how each condition is enforced or certified, its catalog/source scope, and when it must be revalidated. |
+| State and time | Required arrangements/auxiliary state, pre/post-epoch access, retained-cut coverage, retraction behavior and complete recovery/replay obligations. |
+| Resource conditions | Bounded work/state assumptions, affected-key/fanout limits where required, reservations, and the qualified fallback or explicit rejection when a bound cannot be met. |
+| Evidence | Independent reference cases, satisfying and violating preconditions, minimized counterexamples, public-path/restart coverage and measured profiles; missing evidence remains visible. |
+
+An emitted plan records the selected contract versions and the facts satisfying them. Deserialization, replacement and relevant schema/constraint changes revalidate those facts before using the plan. Neither a digest, matching one sampled output nor equality at a single cut proves equivalence for future updates. Runtime same-cut verification complements the semantic argument and the historical/recovery checks. Statistics may rank semantically valid plans but cannot turn an unverified uniqueness assumption into a correctness condition.
+
 The compiler separates semantic IDs from physical IDs. A change in worker placement or hash partition count does not create a different mathematical relation. A change in collation, filter expression, timezone semantics, or security interpretation does. This makes shared state possible without coupling correctness to worker lifetimes.
 
 ## 5. Algorithm portfolio and arrangement sharing
@@ -152,6 +166,8 @@ First-order delta execution is the mandatory baseline. Eligible partial aggregat
 | Multiway/worst-case-optimal join | Qualified query shape and physical implementation | Better asymptotic bounds need not beat indexed binary joins on a given workload. |
 | Localized recomputation | Explicit affected-key/partition bound and recoverable input | A fallback must not silently become a full unbounded database scan. |
 | Recursive differential maintenance | Qualified recursive fragment and deletion algorithm | Termination and state growth remain workload dependent. |
+
+Search a finite set of admitted candidates, beginning with first-order execution and the bounded qualified factorization family. Cap candidate count, planning time/memory and proposed auxiliary state; record when search stops. Keep the best admissible candidate found, or reject when no qualified plan fits the resource contract. An incomplete search cannot claim global optimality, and a first-order fallback still needs its own admission checks. Higher-order or multiway candidates enter this set only after their separate capability gates; no universal auxiliary-view search is required for G3.
 
 F-IVM research motivates maintaining hierarchies of auxiliary views and factorized payloads. Rockstream's choice of which patterns to implement is a product decision, not a claim to reproduce every research result. [S7]
 
@@ -178,7 +194,15 @@ Collect update and delete rates, cardinality, key skew, output amplification, re
 
 Initial adaptation is conservative: scheduling/batching adjustments and explicitly triggered alternative-plan evaluation. G5 automatic replacement requires hysteresis, minimum benefit, cooldown, and a budget for running both versions. Build the replacement from pinned cut `C`; retain/replay deltas with epochs `e >= C`; catch up to an exact complete cut `V`; verify its semantic identity and all required state; atomically switch the catalog's active generation at `V`. Old subscriptions continue with a compatible logical output stream or receive a documented schema break. Rollback uses retained old state or a rebuild; it cannot assume the previous plan kept advancing after cutover. An adaptive experiment must not exhaust the resources needed to maintain the active plan.
 
-`EXPLAIN INCREMENTAL` reports algorithm, shared/reconstructed/persisted state, required indexes, expected update and output amplification, uncertainty, retention pins, exact/approximate status, and fallback/rejection conditions. `ANALYZE` must explicitly opt in to executing a bounded sample or reading production telemetry; an explanation request must not trigger unlimited backfill.
+### Workload materialization advisor
+
+P3.7 exposes bounded, advisory alternatives over the same admitted candidate set: reuse an existing arrangement, add a qualified index or auxiliary aggregate, retain the current plan, or isolate a consumer. P3.8 supplies only its qualified factorization shapes. Broader algorithm families and autonomous replacement retain their G5 gates. Use explicit requests and versioned telemetry first; generating a recommendation does not start a build, reserve durable state, change a consumer policy or authorize a catalog mutation.
+
+Rank feasible recommendations by the estimated change in **whole-workload** cost over the stated horizon, against the current plan and its obligations. Account for shared benefits once; savings for two individually evaluated recommendations are not automatically additive. Report the affected consumers, semantic-contract IDs and eligibility evidence, statistics age/source, resource quantities and prices, cost range/confidence, expected benefit horizon, and reasons alternatives were rejected. Unknown or stale data reduces confidence and may prevent a recommendation; it never relaxes a hard admission condition.
+
+Each proposal includes peak build/replay memory and storage, temporary duplication, retained old-history/rollback tails, catch-up capacity, recovery bounds and the earliest point at which projected savings can begin. A steady-state saving cannot justify a change that cannot fit its transition. Preserve every promised cut, reader, consumer, recovery and security obligation; an endpoint-only comparison cannot authorize dropping older state. Before explicit application, revalidate the current catalog/plan generation, consumer policies, retention roots, resource reservations and contract evidence, then use the existing verified lifecycle. Obsolete recommendations must be regenerated. Automatic application remains separately qualified G5 work.
+
+`EXPLAIN INCREMENTAL` reports selected and considered strategies, contract/precondition decisions, shared/reconstructed/persisted state, required indexes, expected update and output amplification, uncertainty, retention pins, exact/approximate status, and fallback/rejection conditions. Distinguish unavoidable output fanout from avoidable intermediate work, state maintenance and remote-request amplification; include denominators and identify measured versus estimated values. Expose bounded advisor recommendations and search limits without implying that the cheapest plan was exhaustively found. `ANALYZE` must explicitly opt in to executing a bounded sample or reading production telemetry; an explanation request must not trigger unlimited backfill.
 
 ## 7. Execution and verification obligations
 
@@ -190,6 +214,7 @@ Timely's capability model is a useful foundation for proving when no further dat
 | --- | --- |
 | Primitive law | Property tests over inserts, retractions, duplicates, NULLs, empty inputs, and checked boundary values; exact complete bags. |
 | Rewrite | Preconditions exercised with both satisfying and violating cases; original and rewritten IR compared on the same histories. |
+| Strategy admission | Contract/version mismatch, missing required constraint evidence and exhausted search/resource budgets reject or select a qualified fallback; favorable statistics never admit an invalid rewrite. |
 | SQL reachability | Real public SQL through binding, planning, execution, persistence, restart, and response encoding. An internal Rust operator is insufficient. |
 | Same-epoch join correctness | Both inputs change, including duplicate insert/delete cancellation and nonempty cross terms. |
 | Nonlinear operators | Zero-crossing transitions, first/last matches, empty global aggregates, top-K replacement after deletions. |
@@ -198,6 +223,7 @@ Timely's capability model is a useful foundation for proving when no further dat
 | Early factorization | Grouped-join updates and deletes, enforced uniqueness violations, NULL/decimal limits, historical cuts, restart, and complete lifetime cost against first-order execution. |
 | Time and recursion | No-data timer progress, replay after crash, late input policies, cyclic graphs, recursive deletions, limit exhaustion without partial publication. |
 | Plan replacement | Exact cut alignment under concurrent writes, restart at each phase, old/new schema and subscription compatibility, rollback constraints. |
+| Materialization advice | Stale recommendations revalidate before application; overlapping benefits are not double counted; peak transition and retained-history costs can reject an apparently cheaper steady-state plan; advisory inspection never starts a build or changes catalog/consumer policy. |
 
 The batch interpreter, PostgreSQL oracle, production path, randomized histories, and recovery simulator each detect different failures. None alone is an end-to-end proof. Feature promotion requires the [qualification program](../planning/qualification.md), including resources and failure behavior alongside SQL results.
 

@@ -55,6 +55,14 @@ Illustrative allocation of regression evidence:
 
 For agent-authored changes, independent review must inspect actual assertions, reference independence, skipped cases and CI artifacts, not the author's summary. Changes to expected outputs, models, test selection and checkers require risk-appropriate independent review and negative controls. Treat agent-generated tests as untrusted until verified; the [agent operating model](agent-development.md) prohibits self-certification.
 
+### Reusable cut reconciliation
+
+P2.5 turns the independent comparator into a bounded, read-only cut-reconciliation path, reused by G3 lifecycle tests and P6.5 shadow migration. Pin the view's exact published cut and the complete input/recovery history needed to independently reconstruct its source relations; capture schema, semantic/plan versions and source lineage. Compare exact typed rows and weights at that same cut. Never compare a current source snapshot to a lagging maintained result or use the optimized plan as its own oracle.
+
+Run reconciliation with explicit CPU, memory, I/O, retention and duration budgets. Start with deterministic fixtures; larger sampled checks are diagnostics, not evidence for unexamined rows, cuts or queries. Report verified scope, first divergent row/weight, missing coverage or an incomplete/canceled comparison separately. Missing protected input or an exhausted budget cannot produce a passing result. Preserve redacted replay inputs and evidence through the ordinary retention contract; reconciliation itself must not create unbounded pins.
+
+Include deliberate row loss/duplication, wrong lineage, mismatched semantic versions, missing history and mid-check cancellation. A confirmed mismatch enters the existing correctness-incident and promotion-blocking workflow. Reconciliation does not rewrite published state, skip accepted input or silently repair a result; recovery follows the qualified rebuild/rollback protocol. Exposing this path as an operational diagnostic requires the normal authorization, tenant isolation and resource qualification.
+
 ## 5. Continuous correctness and regressions
 
 Maintain a fast deterministic regression corpus containing representative fixed seeds, minimized historical bugs and critical protocol counterexamples. Every correctness fix adds a failing-before/passing-after regression at the lowest effective layer; where that is impossible document the reason, alternate evidence and an owner-approved follow-up before closing the defect. Do not inflate the fast suite with thousands of equivalent seeds: retain diversity and the counterexample while moving redundant exploration to background workers.
