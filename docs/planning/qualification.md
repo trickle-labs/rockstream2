@@ -10,6 +10,8 @@ Retain the discipline of the original Rockstream's [independent scale program](h
 
 ## 2. Verification layers
 
+Use the [testing and verification architecture](../design/testing-and-verification.md) for the test pyramid, deterministic execution boundaries and invariant-to-evidence ledger. The following table specifies domain obligations, not an instruction to execute the entire matrix on each PR.
+
 | Layer | Method | Independent authority / principal failure detected |
 | --- | --- | --- |
 | Row, weight and numeric kernel | Property tests and selected machine proofs | Canonical equality, overflow, cancellation, multiplicity and codec laws |
@@ -171,7 +173,9 @@ Protect evidence against accidental overwrite and include checksums. A provenanc
 
 ## 10. Release gates and regression policy
 
-Fast PR qualification covers changed semantic/protocol contracts and a deterministic seed corpus. Nightly qualification broadens randomized simulation and live adapter tests. Pre-release qualification runs the declared full workload/fault/upgrade/restore matrix. Exact durations, counts and seed budgets are selected from measured coverage/runtime, not arbitrary large counts intended to look rigorous.
+The [development workflow](../design/development-workflow.md) defines the fast required PR baseline, risk-selected extended pre-merge checks, post-merge, continuous, nightly, weekly and release lanes. The ordinary required CI objective is median under 5 minutes and P95 under 10 minutes including queueing. These objectives are unmeasured and cannot waive a safety obligation. Fast PR checks cover changed contracts, a bounded deterministic seed corpus and focused real-dependency smoke tests. High-risk changes require applicable model, fault, compatibility or other safety evidence before merge. Background lanes broaden randomized exploration, real adapter tests, mutation, fuzzing, scale and soaks; they do not routinely block PRs. Pre-release and capability promotion run the declared full applicable workload/fault/upgrade/restore matrix. Exact durations, counts and seed budgets are selected from measured coverage/runtime, not arbitrary large counts intended to look rigorous.
+
+A verified background correctness failure blocks affected promotion and triggers immediate triage, containment and a tracked fix or revert. Archive seeds, traces, independent observations and minimized regression cases. Keep passing, failing, missing, stale and incomplete evidence distinct; a canceled job or retry of a product assertion cannot yield green. Required checks validate the actual integration revision. Merging an unsupported, inert capability is not promotion; no known violation of an existing supported contract may merge.
 
 Any invariant violation blocks promotion irrespective of benchmark speed. Performance gates use the predeclared [requirements](requirements.md); narrow the published support envelope when an improvement does not generalize. A regression exception requires an updated workload promise, explanation, measured tradeoff and explicit maintainer decision in the release record. Preserve counterexamples and add a meaningful regression case before closing a correctness defect.
 

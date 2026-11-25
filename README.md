@@ -25,6 +25,8 @@ The working architecture combines DBSP semantics, a lean Rockstream-native runti
 | [Semantics and compiler](docs/design/semantics-and-compiler.md) | What does a query mean, how is it incrementalized, and what makes a rewrite safe? |
 | [Consistency and storage](docs/design/consistency-and-storage.md) | What is durable, when is it visible, and how do publication, fencing, recovery, and GC work? |
 | [Runtime and operations](docs/design/runtime-and-operations.md) | How do compute, exchange, connectors, isolation, elasticity, observability, upgrades, and disaster recovery work? |
+| [Testing and verification](docs/design/testing-and-verification.md) | How do we build an extensive, balanced test pyramid and deterministic correctness engine? |
+| [Development workflow](docs/design/development-workflow.md) | How do we keep issue-to-merge lead time low while continuously verifying main? |
 | [SQL and API contract](docs/reference/sql-and-apis.md) | Which capabilities arrive when, and what do reads, writes, subscriptions, and errors mean? |
 | [Qualification](docs/planning/qualification.md) | How will correctness, resilience, economics, and performance be established? |
 | [Migration](docs/planning/migration.md) | How can existing workloads move with reconciliation and rollback? |
@@ -34,6 +36,8 @@ The working architecture combines DBSP semantics, a lean Rockstream-native runti
 ## Implementation philosophy
 
 Prototype storage/MVCC, metadata, runtime and full suspension first, then build the semantic kernel and durable single-process slice. Qualify shared state, independent local consumer schedules, online lifecycle and eligible partial aggregation/factorization next; then distribute the same contracts. Broader higher-order maintenance, recursion, temporal SQL and adaptive optimization advance independently. Security, bounded resources, deterministic failures and operational simplicity start with the first slice.
+
+Correctness and fast feedback reinforce each other: design for a broad deterministic test foundation, focused integration and end-to-end coverage, and continuous deeper verification outside the ordinary PR critical path. Establish reproducible local/CI commands in G0, with [contributor guidance](AGENTS.md), risk-based required checks and exact-candidate release qualification.
 
 The first production release follows the gates **G0 → G1 → G2 → G3 → G4 → G6**. **G5** is the advanced-capability track; completing every research feature is not a prerequisite for shipping a qualified, deliberately scoped release. See the implementation plan for the exact evidence each gate requires.
 

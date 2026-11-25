@@ -23,6 +23,8 @@ Initial design partners should supply at least three concrete workloads: a trans
 
 **P2: advanced algorithms and broader SQL.** The architecture reserves contracts for recursion, temporal processing, higher-order maintenance and adaptive planning. Eligible partial aggregation and factorization are tested in G0 and implemented behind measured eligibility rules in G3; general advanced strategies remain separately gated. Feature breadth earns promotion through correctness and workload evidence, not an operator count.
 
+Engineering quality and low issue-to-merge lead time are cross-cutting requirements, not optional feature work. Design for extensive deterministic tests, independent oracles, and focused real-dependency/public-path checks. Run deeper verification continuously outside the ordinary PR critical path; retain risk-based required checks and full release qualification.
+
 ## 3. Functional requirements
 
 | ID | Requirement | First gate | Acceptance evidence |
@@ -113,6 +115,20 @@ Correctness and performance testing use replaceable clocks, networking, storage,
 Formats have explicit versions, feature bits, compatibility readers and corruption checks. A rolling upgrade cannot rewrite away the rollback format until the rollback window closes. Backup qualification includes restore into an empty environment and exact result verification. Operational interfaces report the dependency responsible for staleness and distinguish data corruption, unavailable state, unsupported SQL, insufficient budget, and expired history.
 
 Logical MVCC retention is a budgeted resource. For a domain, exclusive cut `C` includes epochs `e < C`. A computed upper is not a published durable upper. An advertised retention interval `[S, Cp]` includes the base cut `S` and durable published cut `Cp`; a retained base plus timestamped history must reconstruct every promised cut in it. Explicit coverage gaps cannot be filled by assuming that an endpoint checkpoint preserves nonlinear intermediate results. Consumer pins, retained deltas and reconstruction work are charged to their obligations; exhausted retention may reject/expire a consumer or require resnapshot under its declared contract, but cannot silently sacrifice a valid pin. Pin revocation is an authoritative metadata transition, and successful read completion validates the pin against that authority; elapsed wall time alone cannot authorize reclamation or a successful read.
+
+### Engineering quality and feedback objectives
+
+The [testing and verification architecture](../design/testing-and-verification.md) and [development workflow](../design/development-workflow.md) govern these proposed, unmeasured targets from G0. Measure and refine budgets using actual build, queue and test telemetry; never trade a known correctness violation or necessary evidence for speed.
+
+| Objective | Initial target |
+| --- | --- |
+| Focused local feedback | 1–10 seconds on warm focused development builds |
+| Required ordinary PR CI | Median under 5 minutes, P95 under 10 minutes, including queue |
+| Small ready issue to merge | Under one hour where practical; track review/CI separately |
+| Critical invariants | All mapped to meaningful independent verification, with gaps explicit |
+| Deterministic failures | Reproducible with recorded seed/trace; zero tolerated deterministic flakes |
+| Correctness defects | Regression evidence for every fix; zero known correctness violations in releases |
+| Deep verification | Continuous budgeted exploration, scheduled real-dependency/scale checks, exact-candidate release evidence and actionable background failure triage |
 
 ## 8. Definition of a release
 
