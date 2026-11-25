@@ -48,6 +48,8 @@ Illustrative allocation of regression evidence:
 | Full suspension | Simulated obligation/drain/activation transitions | Stop all processes, discard cloud local files, resume against actual durable state |
 | Connector transaction handoff | Normalization and cursor properties | Live PostgreSQL/Kafka, offsets, retention loss and reconnect |
 
+For agent-authored changes, independent review must inspect actual assertions, reference independence, skipped cases and CI artifacts, not the author's summary. Changes to expected outputs, models, test selection and checkers require risk-appropriate independent review and negative controls. Treat agent-generated tests as untrusted until verified; the [agent operating model](agent-development.md) prohibits self-certification.
+
 ## 5. Continuous correctness and regressions
 
 Maintain a fast deterministic regression corpus containing representative fixed seeds, minimized historical bugs and critical protocol counterexamples. Every correctness fix adds a failing-before/passing-after regression at the lowest effective layer; where that is impossible document the reason, alternate evidence and an owner-approved follow-up before closing the defect. Do not inflate the fast suite with thousands of equivalent seeds: retain diversity and the counterexample while moving redundant exploration to background workers.

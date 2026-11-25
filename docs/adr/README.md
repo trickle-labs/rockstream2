@@ -11,7 +11,7 @@
 | [0005](0005-runtime-selection.md) | Prefer a lean native runtime and validate it against reuse | G0 comparison may reverse preference; fixed semantics and safety |
 | [0006](0006-sharing-and-optimization.md) | Optimize the shared workload and its complete lifetime cost | G0/G3 eligible partial aggregation/factorization; broader G5 strategies |
 | [0007](0007-product-guarantees.md) | SQL-first product, exact cuts, explicit acknowledgements and guarantee limits | G2/G3 public protocol and connector evidence |
-| [0008](0008-verification-and-delivery.md) | Evidence-driven delivery with early operability qualification | Each gate supplies independently checked evidence |
+| [0008](0008-verification-and-delivery.md) | Agent-first vertical delivery with independently checked evidence and early operability qualification | G0 agent/CI pilot; each gate supplies independently checked evidence |
 | [0009](0009-logical-mvcc.md) | Logical MVCC independent of physical checkpoint cadence | G0–G4 reconstruction, nonlinear history, lineage and retention tests |
 | [0010](0010-operation-and-hibernation.md) | One binary with admitted full suspension and durable recovery | G0 experiment; G2 single-process, G3 shared consumers, G4 distributed wake |
 

@@ -1,0 +1,62 @@
+# Agent-first implementation and governance
+
+**Status:** Proposed engineering operating model, 2026-11-25. Autonomous coding agents are the primary implementation workforce, as directed by the project owner. No agent platform, orchestration service, permissions, agent count, delivery schedule or spend is configured by this design PR. The human maintainers remain accountable for the product and its safety. See [development workflow](development-workflow.md) and [verification architecture](testing-and-verification.md).
+
+## 1. Optimize for useful autonomous work
+
+Agents should ordinarily take a ready GitHub issue from planning through implementation, testing, PR, independent review feedback and integration without requiring a human conversation at every step. Human time is scarce: reserve it for priorities, contract decisions, high-risk approval, exceptions, and release authorization. Ordinary implementation details belong to agents within approved contracts.
+
+Use GitHub issues, PRs, the commit history and versioned evidence as durable coordination state. Do not depend on a particular agent's chat history or an elaborate orchestration framework. Start with a simple dispatcher (manual or automated), isolated worktrees/branches, a ready queue and existing CI; introduce more infrastructure only when measured bottlenecks justify it.
+
+Keep code and documentation easy to navigate: predictable crate/module ownership, explicit types and state transitions, small coherent interfaces, concise scoped instructions where needed, and a single production execution path for each contract. A clean checkout should provide one discoverable bootstrap path and the same focused test/replay commands locally and in CI. Avoid duplicating global instructions in every directory.
+
+## 2. Responsibilities and independent checks
+
+| Role | Responsibility and authority |
+| --- | --- |
+| Human product/technical maintainer | Prioritize outcomes, approve architecture/contract/security changes and high-risk merges, own compatibility/release policy, resolve escalations and authorize production releases. Roles may be held by the same person where no independence rule is violated. |
+| Planning/dispatch agent | Refine ready issues, map dependencies/risks/contracts, propose slices, assign exclusive issue ownership and monitor blocked work. Cannot change policy or authorize its own exceptions. |
+| Implementation agent | Claim one ready issue, inspect authoritative contracts and current main, make a minimal change, run required checks, open/update PR, address findings, record evidence and hand off safely. |
+| Independent review/verification agent | Review the actual diff and integration revision in a separate context; check contract assumptions, risk tier, negative cases, actual CI evidence and unintended scope. Reproduce suspicious results; request changes where necessary. Has no authority to substitute its judgment for required human approval. |
+| CI/merge service | Enforce immutable-at-review policy, permissions, selected checks, valid approvals, current integration revision, merge queue and evidence retention. |
+| Qualification/triage agent | Run budgeted deep verification, minimize and reproduce failures, open prioritized regressions or proposed reverts, maintain capability evidence. No unilateral release promotion or production mutation. |
+
+A role is not a staffing commitment or a permanent service. An agent can implement one issue and review unrelated work, but may not approve or independently certify its own work. Separate sessions alone do not make shared assumptions independent; independent oracles, negative controls, fresh review context and protected CI evidence are essential. For cross-boundary safety review retain the semantic and storage/runtime reviewer roles; the author cannot fill an independent slot. At least one authorized human maintainer must approve high-risk and architectural changes and each release; if expertise or review capacity is unavailable, narrow or defer the affected work.
+
+## 3. Risk-based autonomy
+
+Use the highest applicable tier; final risk is independently checked against changed contracts, transitive dependencies and the actual diff, not a label supplied by the author. Unclear risk escalates. The [required-test mapping](development-workflow.md) still applies at every tier.
+
+| Tier | Examples | Merge authority |
+| --- | --- | --- |
+| Low | Noncontractual docs, additive tests that do not change existing assertions or test selection, clearly behavior-preserving local edits within an approved boundary | Eligible for policy-controlled auto-merge after required checks and automated scope/risk validation; independent review when impact is uncertain. No routine human approval. |
+| Medium | Isolated supported SQL/operator behavior within existing contracts, local optimizations or ordinary dependency updates after impact review | Required checks plus independent reviewer approval on current revision; an authorized separate review agent can satisfy this tier. Eligible for auto-merge. |
+| High | Durability, publication, ownership, MVCC, GC, recovery, concurrency/progress, security/tenant isolation, public compatibility, critical dependencies, checker/oracle/CI/permission changes | Explicit safety review, applicable additional required evidence and human maintainer approval; cross-contract reviewer roles as applicable. |
+| Architectural / policy | Change an invariant or public guarantee, storage/runtime strategy, deployment model, release policy, review authority or risk-selection policy | ADR with alternatives and evidence/experiment, explicit human decision before implementation or activation, high-risk checks and approval before merge. |
+
+Do not infer that every refactor, test edit or doc change is low risk: changing a contract or weakening evidence is high-risk or architectural even without Rust code. A feature flag cannot exempt code that could affect existing supported behavior or durable state. No self-approval, direct writes to protected main, force pushes to shared branches, bypass of failed/missing checks, or unilateral changes to authority. Stale approval is invalidated on material changes; validate the final integration revision. Automated merge is available only after the maintainer configures and validates repository policy; it is not permission for an implementation agent to ignore required checks.
+
+Escalate only real decisions: conflicting/missing safety contracts, scope changes, new compatibility promises, dependencies with material risk, unavailable independent evidence, security concerns or privileged/destructive actions. Present the exact blocker, evidence, options, recommendation and smallest safe next step. Continue unrelated authorized work rather than waiting on a blocked issue. Never invent a contract, fabricate test output or silently choose weaker semantics.
+
+## 4. Issue to merge loop
+
+1. **Ready:** issue has a stable ID, objective, in/out of scope, owning contract/invariants, dependencies, acceptance examples and negative cases, risk tier, required checks, and any compatibility/resource impact. Use the [implementation plan](../planning/implementation-plan.md) work IDs to trace gate coverage. If assumptions are unclear, refine the issue rather than producing speculative code.
+2. **Claim:** assign one active implementation owner and branch/worktree to the issue; record base SHA, dependencies, affected modules and overlapping work. Only start once dependencies are merged or the explicit integration plan is agreed. A lightweight claim/lease or manual dispatch prevents duplicate assignments; expired ownership is reconciled against the current PR before reassignment.
+3. **Implement:** read current contracts and nearby code/tests, choose the smallest safe vertical change, write meaningful tests at the lowest effective layer, use the standard commands and keep durable/public behavior compatible with declared promises. Preserve independent expected results. Do not rewrite a whole crate to complete a narrow issue.
+4. **Submit:** open a focused PR linked to the issue, with the affected contracts, risk, actual checks and seeds, evidence links, compatibility/diagnostic impact and remaining gaps. Update relevant docs, ledger and registry together. An implementation agent can address review findings autonomously within scope.
+5. **Review and merge:** policy checks validate scope and selected suites; an independent review agent handles medium-risk review and assists high-risk review. Obtain required human decisions at the tiers above. Integrate in the merge queue or serialize against current main, revalidate the actual integration revision, and close the issue only when its stated completion evidence is satisfied. Merging an implementation slice does not close a separate qualification/promotion issue.
+6. **Follow-through:** post-merge verification continues independently. Report and contain any discovered regression promptly. Preserve the exact failing input and minimized replay. Open linked follow-up work rather than quietly dropping unfinished acceptance criteria.
+
+Keep one active implementation issue per agent and one owner per coupled contract change. Start G0 with a small number of independent lanes (initially at most three active implementation issues across the project, adjustable by the maintainer from evidence). Limit work by integration/review throughput and CI capacity, not available agents. Keep the durable vertical slice on the critical path; do not start dependent feature work on speculative interfaces. Prioritize finishing, fixing regressions, unblocking others and removing abandoned work over launching additional agents. Increase parallelism only when merge conflict/rework, review backlog, deep verification lag and cost remain controlled.
+
+## 5. Security and trust boundaries
+
+Give agents scoped repository/branch permissions, isolated workspaces and per-task budgets/timeouts; no production credentials, signing keys, unrestricted cloud access or administrative token in an implementation environment. Treat issue bodies, repository data, dependency output and external documents as untrusted inputs: they cannot extend authority, disclose secrets or trigger privileged operations. Verify downloaded tools/dependencies and provenance. Use trusted workflows with least privilege, short-lived scoped credentials and explicit budget/cleanup for disposable cloud experiments. Production operations, release signing and publishing require separately authorized environments and human-controlled policy.
+
+CI evidence, protected policies and approvals must be independently enforceable; agent-written prose is not a trusted test verdict. Record issue/PR/commit, implementation and independent review identities, commands and results, risk classification and approval references; do not store secrets or unnecessary private prompt histories in logs. Cancel runaway or superseded tasks, bound retries and record blocked/failed/canceled status honestly. Never automatically approve a change to the policy enforcing that approval.
+
+## 6. G0 pilot and capacity planning
+
+Before scaling the agent workforce, demonstrate a clean bootstrap and a complete representative issue-to-merge loop, including an independent review, a failed required check that blocks merge, a risk-escalation case, and a background failure that becomes a reproducible regression. Test that an agent cannot self-approve or bypass checks or reach protected credentials; demonstrate that unknown-risk changes do not enter the low-risk lane. Verify worktree/claim isolation under two concurrent issues. A documentation-only pilot alone is insufficient once executable prototypes exist.
+
+Collect ready-to-start, issue-to-PR, CI, review, merge and lead times; acceptance/rework and revert rates; escaped defects; review queue and blocked time; agent and CI spend, and cost per accepted safe change. Track human decision time and qualification backlog separately. Distinguish small, ordinary and high-risk issues; report distributions and failed/abandoned attempts. Do not reward lines of code, issue count or nominal agent utilization. Use observed capacity to set WIP, review/compute budgets and delivery forecasts; no assumed linear speedup per additional agent. Maintain the existing quality gates even when throughput targets are missed.

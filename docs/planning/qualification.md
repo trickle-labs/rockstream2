@@ -169,7 +169,7 @@ The implementation will define and version a machine-readable bundle with at lea
 | Cost | Billable quantities, prices/date, included services, attribution, headroom and total |
 | Verdict | Exact comparison results, negative controls, gate limits, unresolved defects, reviewer identity |
 
-Protect evidence against accidental overwrite and include checksums. A provenance hash supports reproducibility; it does not replace an independent checker or trustworthy observation. Verification tooling should be usable outside the tested cluster.
+Protect evidence against accidental overwrite and include checksums. For agent-led development, record the issue/PR, commit, implementing and independently reviewing identities, approved risk tier, commands, actual observations and applicable authorization. CI-produced artifacts and independent checking, not agent self-report, establish the verdict; do not store secrets or unnecessary private prompt histories. A provenance hash supports reproducibility; it does not replace an independent checker or trustworthy observation. Verification tooling should be usable outside the tested cluster.
 
 ## 10. Release gates and regression policy
 
@@ -177,6 +177,8 @@ The [development workflow](../design/development-workflow.md) defines the fast r
 
 A verified background correctness failure blocks affected promotion and triggers immediate triage, containment and a tracked fix or revert. Archive seeds, traces, independent observations and minimized regression cases. Keep passing, failing, missing, stale and incomplete evidence distinct; a canceled job or retry of a product assertion cannot yield green. Required checks validate the actual integration revision. Merging an unsupported, inert capability is not promotion; no known violation of an existing supported contract may merge.
 
+Performance engineering starts with targeted kernel microbenchmarks and background commit-to-commit regression baselines; use fixed comparable workloads, repetitions/noise estimates and predeclared thresholds. A microbenchmark is not a release or economic qualification. Record significant regressions and bisect/triage them as tracked work.
+
 Any invariant violation blocks promotion irrespective of benchmark speed. Performance gates use the predeclared [requirements](requirements.md); narrow the published support envelope when an improvement does not generalize. A regression exception requires an updated workload promise, explanation, measured tradeoff and explicit maintainer decision in the release record. Preserve counterexamples and add a meaningful regression case before closing a correctness defect.
 
-Review gate results at the exact release commit and binary. A passing previous head is not evidence for untested subsequent changes. This documentation package's validation record must remain separate from all future executable qualification results.
+An authorized human maintainer approves the release after independent review of the exact candidate evidence; an implementation agent cannot authorize or sign its own release. Review gate results at the exact release commit and binary. A passing previous head is not evidence for untested subsequent changes. This documentation package's validation record must remain separate from all future executable qualification results.

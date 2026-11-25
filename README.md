@@ -27,6 +27,7 @@ The working architecture combines DBSP semantics, a lean Rockstream-native runti
 | [Runtime and operations](docs/design/runtime-and-operations.md) | How do compute, exchange, connectors, isolation, elasticity, observability, upgrades, and disaster recovery work? |
 | [Testing and verification](docs/design/testing-and-verification.md) | How do we build an extensive, balanced test pyramid and deterministic correctness engine? |
 | [Development workflow](docs/design/development-workflow.md) | How do we keep issue-to-merge lead time low while continuously verifying main? |
+| [Agent-first development](docs/design/agent-development.md) | How do autonomous coding agents implement, review, integrate and escalate work safely? |
 | [SQL and API contract](docs/reference/sql-and-apis.md) | Which capabilities arrive when, and what do reads, writes, subscriptions, and errors mean? |
 | [Qualification](docs/planning/qualification.md) | How will correctness, resilience, economics, and performance be established? |
 | [Migration](docs/planning/migration.md) | How can existing workloads move with reconciliation and rollback? |
@@ -36,6 +37,8 @@ The working architecture combines DBSP semantics, a lean Rockstream-native runti
 ## Implementation philosophy
 
 Prototype storage/MVCC, metadata, runtime and full suspension first, then build the semantic kernel and durable single-process slice. Qualify shared state, independent local consumer schedules, online lifecycle and eligible partial aggregation/factorization next; then distribute the same contracts. Broader higher-order maintenance, recursion, temporal SQL and adaptive optimization advance independently. Security, bounded resources, deterministic failures and operational simplicity start with the first slice.
+
+Autonomous coding agents are the primary implementation workforce. Agents take bounded issues through independently verified PRs; humans own direction, safety-critical/architectural approvals and releases. Prefer small vertical slices, reproducible environments, controlled parallelism, and evidence-driven simplification over large generated code changes. See the [agent operating model](docs/design/agent-development.md).
 
 Correctness and fast feedback reinforce each other: design for a broad deterministic test foundation, focused integration and end-to-end coverage, and continuous deeper verification outside the ordinary PR critical path. Establish reproducible local/CI commands in G0, with [contributor guidance](AGENTS.md), risk-based required checks and exact-candidate release qualification.
 

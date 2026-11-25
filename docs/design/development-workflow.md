@@ -4,7 +4,7 @@
 
 ## 1. Fast and safe delivery
 
-Keep issue-to-merged-PR lead time low. Favor small independently reviewable vertical changes, explicit contracts, stable dependency boundaries, trunk-based integration and automated checks. Merge and release are separate decisions: passing bounded PR checks permits an appropriate merge, not a production guarantee. Incomplete capabilities remain unsupported and disabled on supported paths; release promotion requires the full applicable evidence at the exact candidate commit/binary. Never trade a known correctness violation for a timing objective.
+Autonomous coding agents are the primary implementation workforce; the [agent operating model](agent-development.md) defines issue ownership, independent review, human decision authority and risk-based autonomy. Keep issue-to-merged-PR lead time low. Favor small independently reviewable vertical changes, explicit contracts, stable dependency boundaries, trunk-based integration and automated checks. Merge and release are separate decisions: passing bounded PR checks permits an appropriate merge, not a production guarantee. Incomplete capabilities remain unsupported and disabled on supported paths; release promotion requires the full applicable evidence at the exact candidate commit/binary. Never trade a known correctness violation for a timing objective.
 
 Initial objectives (measure and recalibrate after G0, not hard deadlines that bypass checks):
 
@@ -13,6 +13,7 @@ Initial objectives (measure and recalibrate after G0, not hard deadlines that by
 | Focused local feedback on warm development builds | 1–10 seconds |
 | Required CI wall clock, median / P95 | Under 5 / 10 minutes for ordinary PRs, including queue and all required jobs |
 | Small ready issue to merge | Under one hour where practical; track end-to-end lead time, including review and CI |
+| Accepted safe change | Track agent/CI cost, rework, human review wait, escaped defects and qualification backlog; baseline in G0 |
 | Simulation replay | Every deterministic failure reproducible from the archived inputs |
 | Correctness regression prevention | Every fixed correctness defect has regression evidence; every critical invariant mapped |
 | Flaky deterministic checks / known correctness violations in releases | Zero |
@@ -48,6 +49,8 @@ Maintain a versioned contract-to-test and dependency-to-suite mapping, with tran
 
 For high-risk changes require all evidence necessary for the changed safety contract before merge, even if that exceeds the ordinary budget. Split a risky implementation into inert preparatory work and separately verified activation where possible. A feature flag cannot conceal risk to existing supported behavior or durable state.
 
+Risk-based merge authority follows the [agent operating model](agent-development.md): low and medium risk can be eligible for policy-controlled auto-merge; medium requires independent review; high risk and architectural/policy changes require human authorization and appropriate independent review. A documentation or test-only change can still be high risk. Policy, selector, workflow, checker and permission changes cannot approve or authorize themselves.
+
 ## 4. CI implementation
 
 G0 establishes one documented local/CI task interface for fast, targeted, replay, extended and qualification commands (names/tool choice to be selected during implementation). Expose test discovery and concise actionable failures with command, seed, expected/actual result, trace/artifact and affected contract. Human and automated contributors use the same commands, not a separate agent-only or CI-only implementation.
@@ -56,7 +59,7 @@ Use the Rust crate dependency direction to avoid compiling storage/server/connec
 
 Use stable required status checks and a final gate that distinguishes passed, legitimately not applicable, failed, canceled and missing expected jobs. Test the selection logic itself. Cancel superseded PR runs, never the current required gate; prioritize PR/merge jobs with reserved capacity and isolate deep verification runner pools, cloud budgets, credentials and concurrency. Serialize final integration or use a merge queue when concurrency warrants it; validate the actual integration revision, not a stale PR head. No routine requirement to rerun the complete release matrix on each PR.
 
-Use least-privilege workflow permissions and isolated environments. Never expose cloud credentials or privileged caches to untrusted PR code. Use scoped temporary cloud credentials and bounded disposable resources for trusted qualification jobs; capture cleanup and costs. Set timeouts, report partial/canceled evidence as incomplete and avoid silent background backlog.
+Use least-privilege workflow permissions and isolated environments. Establish reproducible clean bootstrap with pinned Rust toolchain, committed lockfile, declared native tools and service versions, deterministic build inputs and checksums. Distinguish reproducible instructions from bit-for-bit reproducibility (measure the latter before claiming it). Run dependency/license/vulnerability checks and record reviewed exceptions with owners and expiry. Automate small dependency updates; upgrades to critical SlateDB, DataFusion, Arrow and runtime components trigger contract/conformance, format compatibility and performance checks as applicable. Generate dependency inventory/SBOM and build provenance; sign or attest release artifacts in a separately protected release workflow. Do not give an implementation agent administrative or signing credentials. Never expose cloud credentials or privileged caches to untrusted PR code. Use scoped temporary cloud credentials and bounded disposable resources for trusted qualification jobs; capture cleanup and costs. Set timeouts, report partial/canceled evidence as incomplete and avoid silent background backlog.
 
 ## 5. Background failures and releases
 
@@ -70,4 +73,32 @@ The release gate consumes exact-candidate qualification evidence, not just main'
 
 Use the issue contract and acceptance fields in the [implementation plan](../planning/implementation-plan.md). Split changes into small independently safe steps; avoid speculative scaffolding and large unrelated refactors. Include tests, applicable invariant ledger updates, migration/format changes, capability status and reproduction commands in the PR. Review high-risk changes with the appropriate independent contract owners; optimize review latency through focused diffs and clear evidence rather than removing review.
 
-Make the repo suitable for human and AI-assisted development: concise root [AGENTS.md](../../AGENTS.md), explicit ownership and boundaries, discoverable commands, deterministic tests and actionable failure output. Tests are executable contracts, not a substitute for independent oracles or review. Never weaken tests to make an implementation pass.
+The [agent operating model](agent-development.md) governs the primary workforce. Maintain concise root [AGENTS.md](../../AGENTS.md), scoped instructions only where useful, stable module ownership, discoverable bootstrap/test/replay commands and actionable failure output. Use the repository's lightweight issue and PR templates. Tests are executable contracts, not a substitute for independent oracles or review. Never weaken tests to make an implementation pass.
+
+## 7. Complexity and architectural integrity
+
+Choose the simplest design satisfying the established contract and measured resource needs. Extra abstraction, dependency, configuration, alternate execution path or general framework must earn its lifetime verification and maintenance cost. Prefer composition, explicit state transitions, mature dependencies where justified, small cohesive modules, narrow APIs and one canonical production behavior; preserve independent reference implementations for verification. Delete failed prototypes, expired feature flags and obsolete paths rather than accumulating them. Document experiment owner, hypothesis, timebox/compute budget, exit criterion and cleanup decision.
+
+Enforce the dependency direction in [DESIGN.md](../../DESIGN.md) with an executable crate-graph rule in G0, including transitive/prohibited dependencies and cycle checks; extend to important module/visibility boundaries as warranted. Add negative controls for violations. An exception is scoped, justified, recorded and reviewed; do not add a general dependency to make a local test convenient. Track meaningful dependency growth, duplicate paths, review/rework time and build graph cost as signals, not arbitrary line-count or crate-count quotas.
+
+Keep main integrated through narrow vertical slices; limit concurrent work and retire unused scaffolding. Simplify within the scope of a change when safe; propose larger simplifications as separate issues with regression evidence. The project values useful behavior and sustainable complexity, not generated code volume.
+
+## 8. Compatibility and sources of truth
+
+Version durable formats from the first persistent prototype; identify disposable experimental formats and isolated datasets explicitly. No compatibility commitment is implied by experimental internals. Never silently interpret an incompatible format or erase durable data; reject unknown/incompatible versions and provide an explicit reset/export/migration path appropriate to the declared profile. Preview releases name their supported API/format versions, upgrade/downgrade and migration limits. Supported production releases enforce their declared compatibility, rollback window, data retention and upgrade promises with tests. Changes to supported contracts require a reviewed ADR/migration plan; this policy does not weaken existing G2–G6 durability or recovery gates.
+
+| Authority | Responsibility |
+| --- | --- |
+| Detailed design contracts and ADRs | Intended semantics, invariants, alternatives and approved decisions |
+| GitHub issues and PRs | Work scope, dependencies, acceptance and actual change/review history |
+| Executable tests/models and verification ledger | Reproducible observations and bounded evidence of behavior |
+| Machine-readable capability registry | Supported entry points, combinations, guarantees, status and evidence; generate user-facing capability docs and conformance cases where practical |
+| Qualification bundles and release record | Exact commit/binary, environments, measured limits, provenance and approved public support envelope |
+
+Tests cannot silently redefine a contract, and documentation cannot promote an unverified feature. If sources disagree, stop affected promotion, reconcile them in one reviewed change, and retain the counterexample. A capability begins Planned, may be Implemented (internal/public path exists), Verified (applicable correctness/recovery checks), Qualified (required production-profile evidence), and Supported (explicit approved release commitment). Stages are scoped to specific versions, combinations and deployment profiles; regressions can revoke qualification. Start a minimal schema during G0/G1, not a catalog service. See [SQL and APIs](../reference/sql-and-apis.md).
+
+## 9. Continuous performance engineering and diagnosability
+
+Establish representative microbenchmarks with independent semantic checks for kernel CPU, allocations, codecs, indexes and I/O; run affected ones on performance-sensitive changes when required, with larger regression benchmarks in background. Freeze comparable workload, revision, correctness/retention/durability guarantees and hardware; quantify noise and use repetitions before declaring significant regressions. Track throughput, freshness, tail latency, state/memory and write amplification, object requests, CPU and network across commits. Set resource/performance budgets from G0 measurements, not arbitrary targets; protect named baselines with predeclared limits, bisect suspect revisions, and use the full [qualification protocol](../planning/qualification.md) for release and cost claims.
+
+Diagnosability is part of done for significant operations. Produce structured errors and traces with stable operation/contract IDs, logical cut, attempt/generation, blocking dependency and resource/timing context where applicable; expose actionable test/diagnostic commands. Redact credentials, tenant data and sensitive payloads. Test error/metric behavior and keep the overhead bounded. Instrument from the first vertical slice; agents and operators should be able to explain failed tests, stalled progress and resource regressions from retained evidence rather than guess.

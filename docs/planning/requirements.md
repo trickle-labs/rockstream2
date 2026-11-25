@@ -23,7 +23,7 @@ Initial design partners should supply at least three concrete workloads: a trans
 
 **P2: advanced algorithms and broader SQL.** The architecture reserves contracts for recursion, temporal processing, higher-order maintenance and adaptive planning. Eligible partial aggregation and factorization are tested in G0 and implemented behind measured eligibility rules in G3; general advanced strategies remain separately gated. Feature breadth earns promotion through correctness and workload evidence, not an operator count.
 
-Engineering quality and low issue-to-merge lead time are cross-cutting requirements, not optional feature work. Design for extensive deterministic tests, independent oracles, and focused real-dependency/public-path checks. Run deeper verification continuously outside the ordinary PR critical path; retain risk-based required checks and full release qualification.
+Engineering quality, maintainability, simplicity and low issue-to-merge lead time are cross-cutting requirements, not optional feature work. Autonomous coding agents are the primary implementation workforce under the [agent operating model](../design/agent-development.md). Human maintainers retain safety/architecture and release authority; ordinary issues should not require manual approvals beyond their risk tier. Design for extensive deterministic tests, independent oracles, and focused real-dependency/public-path checks. Run deeper verification continuously outside the ordinary PR critical path; retain risk-based required checks and full release qualification.
 
 ## 3. Functional requirements
 
@@ -112,7 +112,7 @@ Include source infrastructure attributable to the test, ingress, metadata, maint
 
 Correctness and performance testing use replaceable clocks, networking, storage, metadata, randomness, and failure injection. Authentication and authorization apply before catalog access and before plan activation. Durable state and transports use encryption appropriate to the deployment profile; secrets never appear in explain plans or ordinary logs. Tenant budgets cover memory, CPU, state, history, network and storage requests, including shared resources.
 
-Formats have explicit versions, feature bits, compatibility readers and corruption checks. A rolling upgrade cannot rewrite away the rollback format until the rollback window closes. Backup qualification includes restore into an empty environment and exact result verification. Operational interfaces report the dependency responsible for staleness and distinguish data corruption, unavailable state, unsupported SQL, insufficient budget, and expired history.
+Formats have explicit versions, feature bits, compatibility readers and corruption checks. Experimental formats are explicitly disposable or unsupported, with isolated state and explicit reset/migration; preview and production profiles declare their supported compatibility/rollback window. Never silently reinterpret or discard durable state promised by a profile. A rolling upgrade cannot rewrite away the rollback format until the rollback window closes. Backup qualification includes restore into an empty environment and exact result verification. Operational interfaces report the dependency responsible for staleness and distinguish data corruption, unavailable state, unsupported SQL, insufficient budget, and expired history.
 
 Logical MVCC retention is a budgeted resource. For a domain, exclusive cut `C` includes epochs `e < C`. A computed upper is not a published durable upper. An advertised retention interval `[S, Cp]` includes the base cut `S` and durable published cut `Cp`; a retained base plus timestamped history must reconstruct every promised cut in it. Explicit coverage gaps cannot be filled by assuming that an endpoint checkpoint preserves nonlinear intermediate results. Consumer pins, retained deltas and reconstruction work are charged to their obligations; exhausted retention may reject/expire a consumer or require resnapshot under its declared contract, but cannot silently sacrifice a valid pin. Pin revocation is an authoritative metadata transition, and successful read completion validates the pin against that authority; elapsed wall time alone cannot authorize reclamation or a successful read.
 
@@ -129,6 +129,9 @@ The [testing and verification architecture](../design/testing-and-verification.m
 | Deterministic failures | Reproducible with recorded seed/trace; zero tolerated deterministic flakes |
 | Correctness defects | Regression evidence for every fix; zero known correctness violations in releases |
 | Deep verification | Continuous budgeted exploration, scheduled real-dependency/scale checks, exact-candidate release evidence and actionable background failure triage |
+| Agent delivery capacity | G0 baseline of accepted issue throughput, lead-time distributions, review/decision wait, rework/reverts, agent/CI spend per accepted change and escaped defects; tune WIP without weakening gates |
+| Maintainability and performance | Enforced dependency rules; measurable resource/benchmark baselines and diagnosable public/operational failures from first executable slice |
+| Reproducible development and release | Clean bootstrap, pinned build inputs, dependency checks, artifact provenance and protected signing/attestation; independently checked before promotion |
 
 ## 8. Definition of a release
 
