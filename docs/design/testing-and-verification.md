@@ -36,6 +36,8 @@ A deterministic run must record the source/build, test and harness versions, see
 
 ### First-class simulation and adversarial campaigns
 
+Treat deterministic simulation as a first-class execution environment from the first production-intended code, following [FoundationDB's engineering experience](https://apple.github.io/foundationdb/engineering.html). P0.9 owns the local/CI runner and P0.3 must demonstrate replay with each runtime candidate, not retrofit replay after distribution. Start with metadata transitions and the golden workload; add the actual task, storage-adapter and connector boundaries as they are implemented. Prefer a small controlled executor/event scheduler for the production-intended logic under simulation; retain qualified production parallelism and do not require a new general-purpose async runtime. Explicitly control event ordering, timers, identities, RNG streams and any iteration order that affects simulated scheduling or decisions. Uncontrolled dependency threads and external I/O remain stated coverage gaps, with real-dependency tests; do not silently substitute a simplified protocol.
+
 P0.9 owns one reproducible simulator/replay entry point (not a second engine) and a seed artifact format. Start with the smallest production-intended metadata and semantic/runtime slices as they exist; exercise the exact same transition functions, operator logic and environment contracts as production. Expand to distributed actors, real lifecycle and public boundaries only as their production slices arrive. Use the same harness locally and in CI. No empty simulated cluster or fixture-only runner counts as the production-logic milestone.
 
 | Mode | Acceptance behavior |
@@ -45,6 +47,26 @@ P0.9 owns one reproducible simulator/replay entry point (not a second engine) an
 | Swarm | Vary fault distributions, workload mix, sizes, schedules and capacities across seeds as well as event choices within each seed; preserve configuration and coverage of rare transitions. |
 | Performance diagnostics | Use controlled, realistic simulated delays and fault budgets to compare logical work, retries, requests, queue high-water marks and amplification. Virtual time is not a real-backend latency, throughput or cost qualification. |
 | Replay | Re-run the captured revision, seed, configuration and decisions/trace as needed, identify the first violated invariant and preserve minimized and original counterexamples. |
+
+#### Named adversarial fault sites
+
+Adapt [FoundationDB's BUGGIFY and workload approach](https://github.com/apple/foundationdb/blob/main/documentation/sphinx/source/client-testing.rst): use stable, semantic fault-site IDs rather than source line numbers. Vary which sites are active per seed and whether/when an active site fires; also permit targeted, forced schedules for regression tests. Use the seeded environment or narrow protocol-boundary hooks to perturb legal execution, never a second implementation of commit, validation or SQL semantics. No externally controllable fault injection in production service builds; keep fault activation in the simulator/test harness, and validate that production execution cannot enable it.
+
+| Site family | Representative perturbations |
+| --- | --- |
+| Metadata / admission | Lose a successful CAS response; conflict a batch; delay outcome reconciliation until a later root commit |
+| Durable prepare / publish | Kill at either side of durable staging or visibility; delay an old generation's upload |
+| Exchange / ownership | Duplicate or delay abandoned-attempt packets; replace a worker while it is backpressured |
+| Storage / retention | Fail slow selectively, interrupt compaction, race pin revocation and reader completion, delay GC |
+| Runtime / resources | Tiny legal queues/batches, skew and fanout, constrained memory/I/O, cancellation while spill is pending |
+| Lifecycle | Crash during drain or restore; race activators; resume an old process after fencing |
+
+Swarm campaigns also vary legal partition/worker counts, batch sizes, compaction timing, quotas and workload mix. Independently record attempted and delivered faults, scope, and first divergent cut or violated invariant. A case intended to exercise a specific fault is inconclusive if that fault was not delivered. Verify negative controls and targeted replay; a fixed seed is not sufficient without the matching revision, harness, configuration and any required scheduling decisions.
+
+Use a reusable, versioned workload description and driver/checker boundary: the same W1-G transactions, cut expectations and adversarial scenarios should run where applicable through production-intended logic in simulation, embedded tests and disposable real deployments. Compare at identical declared complete cuts, not by arrival timing or internal file layout. Keep simulation-specific faults separate from actual process/backend fault mechanisms and retain a separate batch oracle. Only real runs establish real latency, I/O cost and backend conformance. Extend the existing runner rather than creating a second workload framework.
+
+Failure artifacts must be machine-readable and bounded: identify revision/build/harness, workload and configuration, seed and replay command, event/decision trace or digest as appropriate, actual fault delivery, affected invariant and domain/attempt/cut, first expected/observed divergence and original/minimized artifacts. Record nondeterministic dependency gaps or incomplete replay explicitly. Redact secrets and tenant data; retain valid synthetic or authorized redacted fixtures and link the failing case to the regression issue. A successful replay reproduces the failure signature under the captured environment; it need not reproduce real physical file bytes or remain identical across code revisions.
+
 
 Run fine-grained component fuzzers for state transitions, codecs, arithmetic and protocol scheduling in addition to full-path simulation; deeper faults may be cheaper to reach there. Non-deterministic process/real-dependency tests remain essential for Tokio, allocator, filesystem, SlateDB and object-service behavior not controlled by the simulator. Treat an apparent deterministic replay mismatch as a harness/product defect or an explicitly recorded nondeterministic boundary, not a retry-to-green opportunity.
 
