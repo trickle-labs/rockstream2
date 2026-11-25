@@ -56,6 +56,10 @@ Completion accounts for all admitted messages and outstanding capabilities, incl
 
 Every task reserves memory for input, output, accumulators, arrangement cache, exchange, and staging. The scheduler admits a transaction or build only when its declared execution strategy can stay within the pool's limits. Large source transactions use durable chunks and a final complete envelope; their atomicity is independent of chunk size.
 
+Each operator declares and enforces a resource contract: reserved resident/temporary and retained bytes, shared Arrow buffer accounting, maximum queued/in-flight batch bytes and tasks, I/O credits, fanout/chunking strategy, qualified spill representation, cancellation and exhaustion action. Track dependency allocations and process headroom; reserve before growth and test skew, large values and retractions. Reuse buffers, message envelopes and scratch storage where measured to reduce hot-path allocation/copy work. This is bounded dynamic allocation, not a startup-only allocation policy. P0.3 compares candidate peak memory, allocation/copy work, spill and overload behavior on the same admitted workload.
+
+Batch arrangement probes and writes, operator execution, exchange and durable preparation where amortization pays for itself. Bound bytes, count, work and delay; include actual logical work and amplification in measurements. Neither adaptive batching nor a physical checkpoint may erase intermediate logical cuts, reorder noncommuting source operations or weaken admission, publication or retention. Keep the existing [metadata batching contract](consistency-and-storage.md#421-bounded-metadata-commit-scheduler).
+
 | Pressure | Required response | Forbidden shortcut |
 | --- | --- | --- |
 | Queue at byte limit | Withhold credits, stop upstream polling where supported | Drop records or acknowledge unseen source offsets |
