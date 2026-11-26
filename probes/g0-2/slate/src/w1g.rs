@@ -23,6 +23,41 @@ fn encode(row: Option<&(i64, i64)>) -> String {
     row.map_or_else(|| "-".to_owned(), |(count, sum)| format!("{count},{sum}"))
 }
 
+async fn reconstruct(
+    store: &Arc<dyn ObjectStore>,
+    expected_cut: u8,
+) -> Result<Groups, Box<dyn Error>> {
+    let root = store.get(&Path::from("w1g/root")).await?.bytes().await?;
+    let root = std::str::from_utf8(&root)?;
+    let cut: u8 = root.split(':').next().ok_or("missing root cut")?.parse()?;
+    assert_eq!(cut, expected_cut);
+    if cut > 4 {
+        return Err("unexpected root cut".into());
+    }
+    let mut rows = Groups::new();
+    for epoch_cut in 1..=cut {
+        let delta = store
+            .get(&Path::from(format!("w1g/deltas/{epoch_cut}")))
+            .await?
+            .bytes()
+            .await?;
+        let mut seen = BTreeMap::new();
+        for line in std::str::from_utf8(&delta)?.lines() {
+            let (region, value) = line.split_once('=').ok_or("invalid delta")?;
+            if !["North", "South"].contains(&region) || seen.insert(region, ()).is_some() {
+                return Err("invalid or duplicate region".into());
+            }
+            if value == "-" {
+                rows.remove(region);
+            } else {
+                let (count, sum) = value.split_once(',').ok_or("invalid result")?;
+                rows.insert(region.to_owned(), (count.parse()?, sum.parse()?));
+            }
+        }
+    }
+    Ok(rows)
+}
+
 pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
     let fixture = include_str!("../../../../fixtures/w1g/transactions.csv");
     let golden = include_str!("../../../../fixtures/w1g/expected.csv");
@@ -111,6 +146,7 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
                 .await?
                 .into(),
         );
+        assert_eq!(reconstruct(&store, cut).await?, result);
         history.write(batch).await?.await_durable().await?;
         for region in ["North", "South"] {
             let base = index.get(region.as_bytes()).await?;
@@ -163,15 +199,34 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
     assert!(expected.is_empty());
     assert_eq!(snapshots.len(), 4);
     assert!(saw_overlay_difference);
+    history.close().await?;
+    index.close().await?;
+    let reopened_history = Db::open("w1g/pure-history", store.clone()).await?;
+    let reopened_index = Db::open("w1g/delta-index", store.clone()).await?;
+    assert_eq!(reconstruct(&store, 4).await?, snapshots[3]);
     for region in ["North", "South"] {
-        let past = history
+        let past = reopened_history
             .get(format!("cut/2/{region}"))
             .await?
             .ok_or("missing retained cut")?;
         assert_eq!(past.as_ref(), encode(snapshots[1].get(region)).as_bytes());
+        assert_eq!(
+            reopened_index.get(region.as_bytes()).await?.as_deref(),
+            Some(encode(snapshots[1].get(region)).as_bytes())
+        );
     }
-    index.close().await?;
-    history.close().await?;
+    store
+        .put_opts(
+            &Path::from("w1g/deltas/5"),
+            "South=999,999".into(),
+            PutMode::Create.into(),
+        )
+        .await?;
+    assert_eq!(reconstruct(&store, 4).await?, snapshots[3]);
+    store.delete(&Path::from("w1g/deltas/2")).await?;
+    assert!(reconstruct(&store, 4).await.is_err());
+    reopened_index.close().await?;
+    reopened_history.close().await?;
     println!("W1G-COMPARED");
     Ok(())
 }

@@ -50,7 +50,14 @@ rows in immutable objects with a capped overlay over a checkpointed SlateDB
 index, and stores per-cut keyed snapshots in a second SlateDB instance. It
 checks both layouts at each cut and a retained cut-2 read. The second path is
 an exploratory keyed-history representation, not a qualified pure-SlateDB
-history implementation. No request amplification or cost is measured here.
+history implementation. A separate read reconstructs each cut by reading the
+root's upper and replaying its conventionally named immutable deltas; it ignores
+an unreferenced later object and fails when a required delta is removed. Both
+SlateDB instances are closed and reopened for retained-state checks. Unlike the
+single-delta recovery probe, this W1-G root does not bind deltas by digest, and
+the W1-G path does not simulate a crash or recover from its checkpoint. Both
+layouts receive writes derived from the same batch result. No request
+amplification or cost is measured here.
 
 This smoke test is **not G0.2 qualification**: it does not exercise a real
 provider, ambiguous responses, group commit, a full comparison of both storage layouts,
