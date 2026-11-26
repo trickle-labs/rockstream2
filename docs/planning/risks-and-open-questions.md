@@ -63,13 +63,13 @@ The design also constrains default safety behavior. Missing source history stops
 | Starting ambition | Treatment in the proposal |
 | --- | --- |
 | SQL-first streaming database with DBSP semantics | Familiar relational product; workload-centric internal engine and richer SQL progressively qualified |
-| Shared arrangements and workload graph | G3 core with logical MVCC and independent schedules; respect security, consumer retention and failure coupling |
+| Shared arrangements and workload graph | G3b core with logical MVCC and independent schedules; respect security, consumer retention and failure coupling |
 | Dependency-scoped frontiers | Domain-local ordered time first, explicit imports in G4; nested iteration later |
-| Object-storage-native durable state | SlateDB-first state plus transactional object metadata; exact logical cut/protection contract, no hidden local-only authority |
-| Factorized and higher-order IVM | Eligible partial aggregation/factorization experiment in G0 and measured core in G3; broader factorization and higher-order strategies in G5 |
-| Broad SQL including recursion/time | Capability portfolio with explicit termination, deletion and replayable clock contracts |
-| Independent serving | G4; shared object-store interference still measured |
-| Scale-to-zero behavior | G0 experiment, G2 single-process suspend/resume, G3 shared obligations, G4 distributed activation, G6 full qualification; ingestion, timers, sinks, retention and wake triggers constrain eligibility/cost |
+| Object-storage-native durable state | Immutable delta traces + SlateDB working indexes + bounded overlays + transactional object metadata; exact logical cut/protection contract, no hidden local-only authority |
+| Factorized and higher-order IVM | Eligible partial aggregation/factorization qualified in G3b with first-order baseline; broader factorization and higher-order strategies in G5 |
+| Broad SQL including recursion/time | Table-stakes SQL (`LEFT OUTER JOIN`, `DISTINCT`, semi/anti joins, `MIN`/`MAX`) in G3a; Top-K, windows, temporal SQL, and bounded recursion in G5 with explicit termination, deletion and replayable clock contracts |
+| Independent serving | G4 (with cache-affinity query routing); shared object-store interference still measured |
+| Scale-to-zero behavior | G2 single-process stop/restart, G3b shared obligations, G4 distributed activation, G6 full qualification; ingestion, timers, sinks, retention and wake triggers constrain eligibility/cost |
 | Cheap branches and zero-copy backup | Manifest/pin architecture permits them; independent backup and cloning qualification still required |
 | 100 ms freshness, 5 ms reads, 80% scale efficiency, PB scale | Named workload/profile targets and expanding qualification ladder; never claimed current measurements |
 | Better in every dimension | No safety regressions, declared protected workloads, measured cost/performance wins and honest tradeoffs |

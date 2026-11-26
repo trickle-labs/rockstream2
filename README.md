@@ -22,7 +22,7 @@ Existing streaming databases typically force a painful trade-off between operati
 | --- | --- |
 | [Design](DESIGN.md) | Integrated architecture, dual cloud profiles, invariants, storage/metadata model, and transaction walkthrough |
 | [Requirements](docs/planning/requirements.md) | Product thesis, guarantees, target workloads, and honest profile SLOs |
-| [Implementation plan](docs/planning/implementation-plan.md) | Step-by-step incremental gates (`G0 → G1 → G2 → G3 → G4 → G6`, independent `G5`) |
+| [Implementation plan](docs/planning/implementation-plan.md) | Step-by-step incremental gates (`G0 → G1 → G2 → G3a → G3b → G4 → G6`, independent `G5`) |
 | [Implementation start](docs/planning/implementation-start.md) | Lean G0 kill-switch probes, canonical `W1-G` golden workload, and initial issue seeds |
 | [Decision records](docs/adr/README.md) | Architectural commitments, alternatives, and decision gates (`ADR 0001`–`0011`) |
 | [RockStyle](ROCK_STYLE.md) | Engineering constraints: types, release safety checks, bounds, and a small verification stack |
