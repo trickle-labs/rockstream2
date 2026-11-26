@@ -23,10 +23,26 @@ This register does not claim donor results, historical tests or G0.1 qualificati
   match. At the next epoch, left `((1,10), -2)` and empty right produce the
   same two rows at weight `-2`. The source asserts both outputs. The initial
   expected output is checked independently in `scripts/check-cross-term.py`;
-  the retraction and three-way replay remain future G1 work.
+  the retraction is also checked there; three-way replay remains future G1 work.
 - Owner/target: G0.4/G1 kernel. Disposition: adapt the input and expected
   behavior, not donor implementation. `join.rs` imports Arrow, Tokio-util,
   tracing, Rockstream storage/types, chunking, errors and `ArrowZSet`; its
   old storage and hashed row identity are not authorized as new authority.
   The package dependency closure and third-party notices remain unresolved.
   This single case does not complete the wider donor-test inventory.
+
+## Remaining audited components
+
+These are proposed dispositions only, with no code ported and no claim of
+executing donor tests. Each requires exact donor cases, independent expected
+results, complete transitive dependency/notice review and target test IDs
+before reuse.
+
+| Pinned source path | Disposition and visible coupling | Target |
+| --- | --- | --- |
+| `crates/rockstream-types/src/arrangement.rs` | Adapt descriptors after review; direct imports include IDs, merge laws, serde and SHA-256. Replace hash-only admission. | G1/G3b: descriptor equality and forced collisions. |
+| `crates/rockstream-storage/src/trace.rs`, `arrangement_catalog.rs` | Investigate extracting trace algorithms, replacing catalog authority; imports include types, serde, verified persistence and Tokio synchronization. | G2/G3b: independent-cut histories, root/pin lifecycle and recovery. |
+| `crates/rockstream-control/src/frontier.rs` | Adapt progress-membership cases, replace publication wiring; direct imports include SlateDB, audit, IDs and locking. | G2/G4: reject stale generation and omitted work. |
+| `crates/rockstream-storage/src/shard_db.rs` | Extract lessons, replace commit authority; imports include object_store, SlateDB, types and format migration. | G0.2/G2: exact-parent reopen and retained history. |
+| `crates/rockstream-sim/src`, `formal` | Adapt counterexamples and harness assumptions, not historical proof claims. | G0.3/G2: production transition and delivered-fault evidence. |
+| `crates/rockstream-control/src/raft.rs` | Reject as metadata log; retain election/fencing failure scenarios. Direct imports include Tokio, object_store and Rockstream raft types. | G4 optional consensus profile; no claim of log replication. |

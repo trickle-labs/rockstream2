@@ -51,5 +51,8 @@ for (key, left_value), lw in donor_left.items():
     for (_, right_key, right_value), rw in donor_right.items():
         if key == right_key:
             donor_actual[(key, left_value, right_key, right_value)] += lw * rw
-assert donor_actual == Counter({('1', '10', '1', '0'): 2, ('1', '10', '1', '30'): 2})
+donor_expected = Counter({('1', '10', '1', '0'): 2, ('1', '10', '1', '30'): 2})
+assert donor_actual == donor_expected
+retraction = Counter({row: -weight for row, weight in donor_actual.items()})
+assert retraction == Counter({('1', '10', '1', '0'): -2, ('1', '10', '1', '30'): -2})
 print('donor weighted inner join independent expectation passed')
