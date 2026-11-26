@@ -47,7 +47,7 @@ Keep deterministic replay focused where it gives genuine leverage, and never pre
 | Property + independent oracle | G0.1, G1 | Exact Z-set/SQL multiset equality at every cut, numeric/NULL/empty laws, negative controls |
 | Quint protocol model | G0.3, extended at G4.0 | G0.3: publication atomicity, ownership fencing, compositional batch outcomes and abstract GC pin/retire reachability. G4.0: reader leases, VM pauses, clock discontinuities and grace-window GC safety |
 | Deterministic state-machine replay | G2 | Pure metadata/progress/exchange transitions under arbitrary interleavings and lost responses |
-| Real-process crash & chaos | G0.2, G2, G4.0/G4 | G0.2: provider conditional-write behavior and SlateDB reopen. G2: accepted-input recovery and single-process restart. G4.0/G4: separate-process readers, lease/grace GC and distributed failures |
+| Real-process crash & chaos | G0.2, G2, G4.0/G4 | G0.2: provider conditional-write behavior, post-CAS/mid-apply SlateDB `SIGKILL` writable reopen (zero double-apply), checkpoint registration and overlay-cap enforcement. G2: accepted-input/PK-index recovery, durable view quarantine across restart, and single-process stop/restart. G4.0/G4: separate-process readers, lease/grace GC and distributed failures |
 
 Failure artifacts record revision, workload/seed, replay command, affected invariant, and first expected/observed divergence. Keep the harness small and fast enough to run locally with one command.
 

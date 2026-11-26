@@ -22,6 +22,6 @@ Handwritten SQL delta operators alone offer a faster initial path but multiply h
 
 ## Consequences and evidence
 
-There will be less SQL in G2 than the original engine currently exposes. Migration requires workload parity before cutover. Every promoted feature needs public-path backfill, retraction, restart and resource evidence. G0 settles the type-return/overflow matrix; G1 proves the initial supported combinations against an independent evaluator, with deliberate cross-term and empty-aggregate errors as negative controls.
+There will be less SQL in G2 than the original engine currently exposes. Migration requires workload parity before cutover. Every promoted feature needs public-path backfill, retraction, restart and resource evidence. `G0.1` fixes the exact `DECIMAL(18, 2)`/`BIGINT` rules for `W1-G` and its oracle; `P1.1`/`P1.3` (G1) settles and proves the full G1/G2 precision `<= 38` type-return/overflow matrix and proves the initial supported combinations against an independent evaluator, with deliberate cross-term and empty-aggregate errors as negative controls.
 
 DBSP supplies a research foundation, not an automatic proof of this compiler: [DBSP, PVLDB 2023](https://docs.feldera.com/vldb23.pdf). See [qualification](../planning/qualification.md) for the implementation obligations.
