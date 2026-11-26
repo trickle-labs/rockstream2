@@ -78,6 +78,20 @@ async fn exercise(inner: Arc<dyn ObjectStore>, delta_layout: bool) -> Result<(),
             batch.put(format!("cut/{cut}"), value.as_bytes());
             batch.put(b"_meta/applied_cut", value.as_bytes());
             db.write(batch).await?.await_durable().await?;
+            let mode = match root_version.take() {
+                Some(v) => PutMode::Update(v),
+                None => PutMode::Create,
+            };
+            root_version = Some(
+                store
+                    .put_opts(
+                        &Path::from(format!("{name}/root")),
+                        value.clone().into(),
+                        mode.into(),
+                    )
+                    .await?
+                    .into(),
+            );
         }
     }
     assert!(overlay.is_empty());
@@ -89,7 +103,17 @@ async fn exercise(inner: Arc<dyn ObjectStore>, delta_layout: bool) -> Result<(),
     db.close().await?;
     let reopened = Db::open(format!("{name}/index"), store.clone()).await?;
     assert_eq!(reopened.get(key).await?.as_deref(), Some(b"32".as_slice()));
+    let root = store
+        .get(&Path::from(format!("{name}/root")))
+        .await?
+        .bytes()
+        .await?;
+    let root = std::str::from_utf8(&root)?;
     if delta_layout {
+        let (root_cut, checkpoint) = root.split_once(':').ok_or("invalid synthetic root")?;
+        assert_eq!(root_cut, "32");
+        assert!(!checkpoint.is_empty());
+        let mut reconstructed = 0;
         for cut in 1_u32..=32 {
             let stored = store
                 .get(&Path::from(format!("{name}/delta/{cut}")))
@@ -97,8 +121,11 @@ async fn exercise(inner: Arc<dyn ObjectStore>, delta_layout: bool) -> Result<(),
                 .bytes()
                 .await?;
             assert_eq!(stored.as_ref(), cut.to_string().as_bytes());
+            reconstructed = std::str::from_utf8(&stored)?.parse::<u32>()?;
         }
+        assert_eq!(reconstructed, 32);
     } else {
+        assert_eq!(root, "32");
         for cut in 1_u32..=32 {
             assert_eq!(
                 reopened.get(format!("cut/{cut}")).await?.as_deref(),

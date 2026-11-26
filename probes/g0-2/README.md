@@ -78,8 +78,9 @@ The synthetic experiment is predeclared as 32 sequential updates to one
 integer, with a new exclusive cut after each update. The delta prototype writes
 one immutable value object and one conditional root update per cut, keeping at
 most eight pending entries and registering a checkpoint every eight cuts. The
-history prototype writes each value under its cut in a durable SlateDB batch.
-Each closes and reopens its instance and checks all 32 stored cuts or deltas;
+history prototype writes each value under its cut in a durable SlateDB batch,
+then conditionally publishes its root. Each closes and reopens its instance,
+reads the root and checks all 32 stored cuts or replays the delta values;
 the history path also reads cut 8 before closing. They run separately on
 the same disposable Silo instance. Counters wrap the `object_store` interface,
 including calls issued by SlateDB: PUT attempts and successes and their payload
@@ -91,6 +92,10 @@ bytes: retries, pagination, bulk operations and streaming may differ. They
 include setup, checkpointing, and clean close; they do not include idle costs,
 crash recovery or cloud billing. The synthetic schemas and checkpoint schedules
 are deliberately minimal and are not a provider qualification or layout vote.
+Neither path validates receipts or full ownership fencing, and the delta reopen
+checks the checkpoint ID in its root but reconstructs from every delta rather
+than restoring the checkpoint. The two paths have different validation reads,
+so their counts do not establish equivalent end-to-end behavior.
 
 This smoke test is **not G0.2 qualification**: it does not exercise a real
 provider, ambiguous responses, a complete group-commit scheduler, a full comparison of both storage layouts,
