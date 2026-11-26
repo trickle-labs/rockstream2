@@ -1,0 +1,34 @@
+fast	Run fast checks	﻿2026-11-26T21:13:43.0386049Z ##[group]Run scripts/check-fast.sh
+fast	Run fast checks	2026-11-26T21:13:43.0386259Z ^[[36;1mscripts/check-fast.sh^[[0m
+fast	Run fast checks	2026-11-26T21:13:43.0412968Z shell: /usr/bin/bash -e {0}
+fast	Run fast checks	2026-11-26T21:13:43.0413113Z env:
+fast	Run fast checks	2026-11-26T21:13:43.0413226Z   PGHOST: 127.0.0.1
+fast	Run fast checks	2026-11-26T21:13:43.0413344Z   PGPORT: 5432
+fast	Run fast checks	2026-11-26T21:13:43.0413460Z   PGUSER: postgres
+fast	Run fast checks	2026-11-26T21:13:43.0413703Z ##[endgroup]
+fast	Run fast checks	2026-11-26T21:13:43.1430891Z     Checking w1g-oracle v0.1.0 (/home/runner/work/rockstream2/rockstream2/crates/w1g-oracle)
+fast	Run fast checks	2026-11-26T21:13:43.1762232Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.05s
+fast	Run fast checks	2026-11-26T21:13:43.2180319Z    Compiling w1g-oracle v0.1.0 (/home/runner/work/rockstream2/rockstream2/crates/w1g-oracle)
+fast	Run fast checks	2026-11-26T21:13:43.5685004Z     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.37s
+fast	Run fast checks	2026-11-26T21:13:43.5690054Z      Running unittests src/lib.rs (target/debug/build/w1g-oracle/68b3c111571a603f/out/w1g_oracle-68b3c111571a603f)
+fast	Run fast checks	2026-11-26T21:13:43.5701116Z 
+fast	Run fast checks	2026-11-26T21:13:43.5701397Z running 1 test
+fast	Run fast checks	2026-11-26T21:13:43.5708722Z test tests::batch_matches_frozen_cuts ... ok
+fast	Run fast checks	2026-11-26T21:13:43.5709308Z    Doc-tests w1g_oracle
+fast	Run fast checks	2026-11-26T21:13:43.5709714Z 
+fast	Run fast checks	2026-11-26T21:13:43.5710185Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+fast	Run fast checks	2026-11-26T21:13:43.5710605Z 
+fast	Run fast checks	2026-11-26T21:13:43.5813521Z 
+fast	Run fast checks	2026-11-26T21:13:43.5813962Z running 0 tests
+fast	Run fast checks	2026-11-26T21:13:43.5814285Z 
+fast	Run fast checks	2026-11-26T21:13:43.5814669Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+fast	Run fast checks	2026-11-26T21:13:43.5815111Z 
+fast	Run fast checks	2026-11-26T21:13:45.9456668Z .........
+fast	Run fast checks	2026-11-26T21:13:45.9457472Z ----------------------------------------------------------------------
+fast	Run fast checks	2026-11-26T21:13:45.9480025Z Ran 9 tests in 2.327s
+fast	Run fast checks	2026-11-26T21:13:45.9480475Z 
+fast	Run fast checks	2026-11-26T21:13:45.9499774Z OK
+fast	Run fast checks	2026-11-26T21:13:45.9980198Z dependency policy and direct/transitive negative controls passed
+fast	Run fast checks	2026-11-26T21:13:46.0138428Z omitted join cross-term detected at W1-G cut 2
+fast	Run fast checks	2026-11-26T21:13:46.0139296Z donor weighted inner join independent expectation passed
+fast	Run fast checks	2026-11-26T21:13:46.0921459Z PostgreSQL W1-G complete-cut comparisons passed

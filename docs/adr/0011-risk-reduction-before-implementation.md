@@ -29,3 +29,13 @@ The mechanism choices in this record remain in force, but their adoption gates a
 - G0 comprises two timeboxed tracks: foundation unlocks G1, and durability physics unlocks G2 in parallel with G1.
 - Every architectural invariant (`INV-01`–`INV-10`) remains intact; none of these simplifications weakens exact SQL semantics, atomic publication, ownership fencing, or GC safety.
 - Unproven claims remain unmeasured until the relevant G0/G4.0 and later gates produce real artifacts. If G0.2 finds conditional writes unavailable or SlateDB index maintenance misses its profile budget, reject the provider/profile or change the layout before full-engine investment; consider OpenRaft only through the evidence gate.
+
+## G0.1 observation (inconclusive)
+
+The initial workspace, frozen W1-G fixture, independent batch and PostgreSQL
+checks, negative controls, and seeded donor register are available for review.
+The bounded observations and exact source identities are recorded in
+[preliminary G0.1 evidence](../../evidence/g0-1/preliminary.md). They do not
+approve the implementation, qualify the integration revision, or unlock G1;
+human review, integration checks and G0.4 remain required. This observation
+does not change the decisions or invariants in this ADR.
