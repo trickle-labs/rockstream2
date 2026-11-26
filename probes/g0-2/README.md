@@ -59,9 +59,13 @@ Another W1-G run receives SIGKILL after publishing cut 3 and durably writing
 only the first chunk to the cut-2 index. Recovery clones the registered cut-2
 checkpoint, verifies its baseline, and applies the cut-3 changes from the
 root-selected history. Reusing the dirty live instance fails the baseline
+negative control. A separate run kills the keyed-history writer after cut-3
+publication but before applying the history batch; recovery reconstructs that
+cut, writes its rows and checks them after reopening. Skipping replay fails its
 negative control. Both layouts receive writes derived from the same batch
-result; the keyed-history path is not crash-tested. No request amplification
-or cost is measured here.
+result. The printed delta payload bytes and history value bytes omit keys,
+metadata, SlateDB internals and requests, so they are not comparable write
+amplification or cost measurements.
 
 A separate local group-commit exercise accepts two concurrently enqueued
 same-domain operations, composes their distinct outcomes in memory, and writes

@@ -48,16 +48,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .build()?,
     );
     if mode == "w1g" {
-        return w1g::run(store, prefix, false).await;
+        return w1g::run(store, prefix, "none").await;
     }
     if mode == "w1g-crash" {
-        return w1g::run(store, prefix, true).await;
+        return w1g::run(store, prefix, "mid").await;
+    }
+    if mode == "w1g-root-crash" {
+        return w1g::run(store, prefix, "root").await;
     }
     if mode == "w1g-recover" {
         return w1g::recover(store, prefix, false).await;
     }
     if mode == "w1g-recover-bad" {
         return w1g::recover(store, prefix, true).await;
+    }
+    if mode == "w1g-history-recover" || mode == "w1g-history-bad" {
+        return w1g::recover_history(store, prefix, mode == "w1g-history-bad").await;
     }
     if mode == "group" {
         return group::run(store).await;

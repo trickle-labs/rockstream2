@@ -83,7 +83,7 @@ async fn reconstruct(
 pub async fn run(
     store: Arc<dyn ObjectStore>,
     namespace: &str,
-    crash: bool,
+    crash: &str,
 ) -> Result<(), Box<dyn Error>> {
     let fixture = include_str!("../../../../fixtures/w1g/transactions.csv");
     let golden = include_str!("../../../../fixtures/w1g/expected.csv");
@@ -117,6 +117,8 @@ pub async fn run(
     let mut checkpoint_id = String::new();
     let mut digests = Vec::new();
     let mut saw_overlay_difference = false;
+    let mut delta_payload_bytes = 0usize;
+    let mut history_value_bytes = 0usize;
     for (epoch, lines) in epochs {
         for line in lines {
             let f: Vec<_> = line.split(',').collect();
@@ -149,8 +151,14 @@ pub async fn run(
                     return Err("W1-G overlay cap exceeded".into());
                 }
             }
+            history_value_bytes = history_value_bytes
+                .checked_add(value.len())
+                .ok_or("history byte count overflow")?;
             batch.put(format!("cut/{cut}/{region}"), value.as_bytes());
         }
+        delta_payload_bytes = delta_payload_bytes
+            .checked_add(delta.len())
+            .ok_or("delta byte count overflow")?;
         let delta_path = Path::from(format!("{namespace}/deltas/{cut}"));
         store
             .put_opts(&delta_path, delta.clone().into(), PutMode::Create.into())
@@ -175,8 +183,13 @@ pub async fn run(
                 .into(),
         );
         assert_eq!(reconstruct(&store, namespace, cut).await?, result);
+        if crash == "root" && cut == 3 {
+            println!("READY");
+            io::stdout().flush()?;
+            std::future::pending::<()>().await;
+        }
         history.write(batch).await?.await_durable().await?;
-        if crash && cut == 3 {
+        if crash == "mid" && cut == 3 {
             let mut partial = WriteBatch::new();
             partial.put(b"North", encode(result.get("North")).as_bytes());
             partial.put(b"_meta/dirty", b"1");
@@ -274,7 +287,7 @@ pub async fn run(
     assert!(reconstruct(&store, namespace, 4).await.is_err());
     reopened_index.close().await?;
     reopened_history.close().await?;
-    println!("W1G-COMPARED");
+    println!("W1G-COMPARED delta_payload_bytes={delta_payload_bytes} history_value_bytes={history_value_bytes}");
     Ok(())
 }
 
@@ -353,5 +366,52 @@ pub async fn recover(
     }
     recovered.close().await?;
     println!("W1G-RECOVERED");
+    Ok(())
+}
+
+pub async fn recover_history(
+    store: Arc<dyn ObjectStore>,
+    namespace: &str,
+    skip_replay: bool,
+) -> Result<(), Box<dyn Error>> {
+    let result = reconstruct(&store, namespace, 3).await?;
+    let mut golden = Groups::new();
+    for line in include_str!("../../../../fixtures/w1g/expected.csv")
+        .lines()
+        .filter(|l| l.starts_with("3,"))
+    {
+        let f: Vec<_> = line.split(',').collect();
+        golden.insert(f[1].to_owned(), (f[2].parse()?, f[3].parse()?));
+    }
+    assert_eq!(result, golden);
+    let path = format!("{namespace}/pure-history");
+    let history = Db::open(path.clone(), store.clone()).await?;
+    assert!(history.get(b"cut/3/North").await?.is_none());
+    if !skip_replay {
+        let mut batch = WriteBatch::new();
+        for region in ["North", "South"] {
+            batch.put(
+                format!("cut/3/{region}"),
+                encode(result.get(region)).as_bytes(),
+            );
+        }
+        history.write(batch).await?.await_durable().await?;
+    }
+    for region in ["North", "South"] {
+        assert_eq!(
+            history.get(format!("cut/3/{region}")).await?.as_deref(),
+            Some(encode(result.get(region)).as_bytes())
+        );
+    }
+    history.close().await?;
+    let reopened = Db::open(path, store).await?;
+    for region in ["North", "South"] {
+        assert_eq!(
+            reopened.get(format!("cut/3/{region}")).await?.as_deref(),
+            Some(encode(result.get(region)).as_bytes())
+        );
+    }
+    reopened.close().await?;
+    println!("HISTORY-RECOVERED");
     Ok(())
 }

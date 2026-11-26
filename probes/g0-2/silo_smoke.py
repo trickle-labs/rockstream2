@@ -85,7 +85,9 @@ def slate_recovery(binary):
     if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
         raise AssertionError(f"dirty-instance negative control was not detected: {mutant.stderr!r}")
     comparison = recover("w1g", "w1g")
-    expect((comparison.returncode, comparison.stdout), (0, b"W1G-COMPARED\n"), f"W1-G layouts: {comparison.stderr!r}")
+    if comparison.returncode != 0 or not comparison.stdout.startswith(b"W1G-COMPARED "):
+        raise AssertionError(f"W1-G layouts failed: {comparison.stdout!r} {comparison.stderr!r}")
+    print(comparison.stdout.decode().strip())
     group = recover("group", "group")
     expect((group.returncode, group.stdout), (0, b"GROUP-COMMIT\n"), f"group commit: {group.stderr!r}")
     kill_at_ready("w1g-crash", "w1g-crash")
@@ -95,6 +97,13 @@ def slate_recovery(binary):
     mutant = recover("w1g-crash-bad", "w1g-recover-bad")
     if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
         raise AssertionError(f"W1-G dirty-instance negative control was not detected: {mutant.stderr!r}")
+    for prefix in ("history-crash", "history-crash-bad"):
+        kill_at_ready("w1g-root-crash", prefix)
+    recovered = recover("history-crash", "w1g-history-recover")
+    expect((recovered.returncode, recovered.stdout), (0, b"HISTORY-RECOVERED\n"), f"history recovery: {recovered.stderr!r}")
+    mutant = recover("history-crash-bad", "w1g-history-bad")
+    if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
+        raise AssertionError(f"history replay negative control was not detected: {mutant.stderr!r}")
 
 
 def main():
