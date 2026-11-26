@@ -41,3 +41,15 @@ for epoch in (0, 1):
         expected = Counter({('South', 1000): 1, ('South', 2500): 1, ('South', 400): 1})
         assert correct == expected, 'batch result disagrees with frozen cut 2'
 print('omitted join cross-term detected at W1-G cut 2')
+
+# Donor regression: delta_native_join_tests::test_delta_native_join_inner_i64.
+donor_left = Counter({('1', '10'): 2, ('2', '20'): 1})
+donor_right = Counter({('101', '1', '0'): 1, ('102', '1', '30'): 1})
+# This fixture's batch join returns (left payload, right payload) with product weights.
+donor_actual = Counter()
+for (key, left_value), lw in donor_left.items():
+    for (_, right_key, right_value), rw in donor_right.items():
+        if key == right_key:
+            donor_actual[(key, left_value, right_key, right_value)] += lw * rw
+assert donor_actual == Counter({('1', '10', '1', '0'): 2, ('1', '10', '1', '30'): 2})
+print('donor weighted inner join independent expectation passed')

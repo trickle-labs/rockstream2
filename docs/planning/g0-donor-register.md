@@ -11,3 +11,22 @@ pinned revision in the [migration plan](migration.md#donor-assets-and-regression
 | Other donor assets in the [migration table](migration.md#donor-assets-and-regression-transfer) | Retain as proposed dispositions, not imported or certified. | Inventory exact inputs and results, dependency closure, notices and owners before accepting a port. |
 
 This register does not claim donor results, historical tests or G0.1 qualification.
+
+## Exact weighted join case
+
+- Source: `crates/rockstream-ops/tests/delta_native_join_tests.rs`, test
+  `test_delta_native_join_inner_i64`, at the pinned revision above. The source
+  asserts these outputs; the donor has not been executed here.
+- Input at epoch 0: left `((1,10), +2), ((2,20), +1)` and right
+  `((1,0), +1), ((1,30), +1)`, joined on the first column. Independently,
+  equal keys yield `(1,10,1,0): +2` and `(1,10,1,30): +2`; key 2 has no
+  match. At the next epoch, left `((1,10), -2)` and empty right produce the
+  same two rows at weight `-2`. The source asserts both outputs. The initial
+  expected output is checked independently in `scripts/check-cross-term.py`;
+  the retraction and three-way replay remain future G1 work.
+- Owner/target: G0.4/G1 kernel. Disposition: adapt the input and expected
+  behavior, not donor implementation. `join.rs` imports Arrow, Tokio-util,
+  tracing, Rockstream storage/types, chunking, errors and `ArrowZSet`; its
+  old storage and hashed row identity are not authorized as new authority.
+  The package dependency closure and third-party notices remain unresolved.
+  This single case does not complete the wider donor-test inventory.

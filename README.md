@@ -71,5 +71,5 @@ local PostgreSQL instance and set the usual `PGHOST`, `PGPORT`, `PGUSER` and
 `postgres`. It checks formatting, clippy, Rust batch results, dependency and
 cross-term negative controls, and the PostgreSQL W1-G cuts. This is not G0
 qualification; CI timing, independent review and donor inventory remain open. The dependency
-policy currently checks direct edges among workspace crates only; it does not
-inspect transitive paths through external dependencies.
+policy checks the complete resolved graph for paths between workspace crates,
+including paths through external dependencies.
