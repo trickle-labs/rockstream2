@@ -1,13 +1,14 @@
 # G0 donor disposition: initial kernel decision
 
-Status: incomplete inventory; no code is imported. The source is Rockstream v1
+Status: seeded disposition and test inventory; no code is imported. Future
+port decisions and their dependency reviews remain open. The source is Rockstream v1
 commit `d3f973a84f4263bedd6505039d7f469d4708c478`, Apache-2.0. This is the
 pinned revision in the [migration plan](migration.md#donor-assets-and-regression-transfer).
 
 | Entry | Proposed disposition and dependency evidence | Target and remaining evidence |
 | --- | --- | --- |
-| `crates/rockstream-ops/src/factorized.rs` | Do not import for W1-G. Its imports include Arrow, `rockstream_storage::{JoinSide, ShardDb, ShardKeyEncoder, WriteBatch}`, Rockstream IDs/mutations, governor and join helpers; its package manifest also declares other workspace and third-party dependencies. Full transitive closure is not yet resolved. | G0.4 uses a bounded first-order kernel; G3b may adapt eligible factorization only after independent three-way correctness and resource evidence. Donor test inputs, exact results, notices and full closure remain to be inventoried. |
-| `crates/rockstream-ops/src/join.rs` and `zset.rs` | Inspect for selective adaptation; no transfer has been accepted. | G0.4/G1 need weighted changes and simultaneous-input cross-term coverage against the W1-G independent batch/PostgreSQL oracles. Exact donor inputs, results and dependency closure remain unverified. |
+| `crates/rockstream-ops/src/factorized.rs` | Do not import for W1-G. Its imports include Arrow, `rockstream_storage::{JoinSide, ShardDb, ShardKeyEncoder, WriteBatch}`, Rockstream IDs/mutations, governor and join helpers; its package manifest also declares other workspace and third-party dependencies. Full transitive closure is not yet resolved. | G0.4 uses a bounded first-order kernel; Runtime/compiler owners, G3b `DONOR-FACTOR-01`: exact insert/retract/update outputs are recorded below. Independent three-way correctness, resource evidence, notices and full closure remain required before any code port. |
+| `crates/rockstream-ops/src/join.rs` and `zset.rs` | Propose adapting the weighted join/Z-set semantics while replacing the storage-coupled implementation; no code transfer has been accepted. | Semantic-kernel owner, G0.4/G1 `DONOR-JOIN-01` and `DONOR-LAW-01`: the exact weighted join and cancellation expectations are recorded below. Full dependency closure/notices remain open before any code port. |
 | Other donor assets in the [migration table](migration.md#donor-assets-and-regression-transfer) | Retain as proposed dispositions, not imported or certified. | Inventory exact inputs and results, dependency closure, notices and owners before accepting a port. |
 
 This register does not claim donor results, historical tests or G0.1 qualification.
@@ -40,12 +41,12 @@ before reuse.
 
 | Pinned source path | Disposition and visible coupling | Target |
 | --- | --- | --- |
-| `crates/rockstream-types/src/arrangement.rs` | Adapt descriptors after review; direct imports include IDs, merge laws, serde and SHA-256. Replace hash-only admission. | G1/G3b: descriptor equality and forced collisions. |
-| `crates/rockstream-storage/src/trace.rs`, `arrangement_catalog.rs` | Investigate extracting trace algorithms, replacing catalog authority; imports include types, serde, verified persistence and Tokio synchronization. | G2/G3b: independent-cut histories, root/pin lifecycle and recovery. |
-| `crates/rockstream-control/src/frontier.rs` | Adapt progress-membership cases, replace publication wiring; direct imports include SlateDB, audit, IDs and locking. | G2/G4: reject stale generation and omitted work. |
-| `crates/rockstream-storage/src/shard_db.rs` | Extract lessons, replace commit authority; imports include object_store, SlateDB, types and format migration. | G0.2/G2: exact-parent reopen and retained history. |
-| `crates/rockstream-sim/src`, `formal` | Adapt counterexamples and harness assumptions, not historical proof claims. | G0.3/G2: production transition and delivered-fault evidence. |
-| `crates/rockstream-control/src/raft.rs` | Reject as metadata log; retain election/fencing failure scenarios. Direct imports include Tokio, object_store and Rockstream raft types. | G4 optional consensus profile; no claim of log replication. |
+| `crates/rockstream-types/src/arrangement.rs` | Propose adapting descriptors; direct imports include IDs, merge laws, serde and SHA-256. Replace hash-only admission. | Semantic-kernel/sharing owners, G1/G3b `DONOR-ARRANGEMENT-01`: the original spec and ID survive reopen; forced digest-collision and semantic/security mismatch tests are new obligations, not historical evidence. |
+| `crates/rockstream-storage/src/trace.rs`, `arrangement_catalog.rs` | Propose adapting trace algorithms and replacing catalog authority; imports include types, serde, verified persistence and Tokio synchronization. | Storage/sharing owners, G2/G3b `DONOR-TRACE-01`: recovered cuts 50 and 100 return the exact rows below; root/pin integration and independent consumer schedules remain open. |
+| `crates/rockstream-control/src/frontier.rs` | Propose adapting progress cases and replacing publication wiring; direct imports include SlateDB, audit, IDs and locking. | Runtime owner, G2/G4 `DONOR-FRONTIER-01`: a shard report of 3 after 5 cannot lower the published frontier from 5; new scope/generation fencing and omitted-work checks remain open. |
+| `crates/rockstream-storage/src/shard_db.rs` | Propose extracting lessons and replacing commit authority; imports include object_store, SlateDB, types and format migration. | Storage owner, G0.2/G2 `DONOR-ACK-01`: injected ENOSPC must withhold ACK and recover the complete epoch; new exact-parent reopen and retained history remain open. |
+| `crates/rockstream-sim/src`, `formal` | Propose adapting counterexamples and harness assumptions; replace old model bindings, not historical proof claims. | Verification owner, G0.3/G2/G4 `DONOR-SIM-01` and `DONOR-WORKER-01`: interrupted migration retains all three values and worker failure has the exact expected relation below. Model-to-new-transition mapping and delivered-fault evidence remain open. |
+| `crates/rockstream-control/src/raft.rs` | Propose rejecting as metadata log and adapting election/fencing failures. Direct imports include Tokio, object_store and Rockstream raft types. | Metadata/runtime owners, G0.3/G4 `DONOR-FENCE-01`: obsolete A must reject authority after B wins term 2; new generation-fencing evidence remains open. No claim of log replication. |
 
 ## Seeded test and evidence inventory
 
@@ -80,3 +81,26 @@ The seed list is not an exhaustive catalog of all historical donor tests.
 | #157/#252/#253: [`scripts/ci-test-inventory.test.py::test_mandatory_missing_terminal_event`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/scripts/ci-test-inventory.test.py#L182) and [`scripts/record-verus-qualification.test.py::test_phase_identity_step_failures_and_budgets_fail_closed`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/scripts/record-verus-qualification.test.py#L93) | Mandatory case with no terminal event yields a missing-event error and zero passes; stale revision/lock digest, failed or over-budget step, or corrupt binary digest makes qualification merge raise an error and leaves no completed output. | Adapt evidence rules; verification owner, G0.1/G6 `DONOR-EVIDENCE-01`. Current fast suite has no full execution-accounting gate; implement where required before qualification. |
 | v0.73 security: [`crates/rockstream-cli/tests/oidc_release_process_tests.rs::management_rejects_stale_grantor_revision_by_release_process`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-cli/tests/oidc_release_process_tests.rs#L1609) | Increment the grantor revision and remove its operator permission; submit a grant mutation with the old expected revision. Expected operation state `failed`, phase `security_policy_rejected`, historical reason `RS-2401`, unchanged target principal, and exact durable failure record on lookup. | Adapt denied-mutation and durable-audit behavior; security owner, G2+ `DONOR-SECURITY-01`. Donor v0.73 was not integrated sign-off; the historical code is not a new compatibility promise. |
 | v0.59.13 surface: [`scripts/check-product-surface.test.sh`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/scripts/check-product-surface.test.sh#L82) | Tamper generated function `upper` return type to `INT4`; drift check must reject the signature mismatch. Remove error `RS-0001` or add dangling `RS-9999`; corresponding missing/reference checks must reject. | Adapt drift and source-owned capability evidence; product-surface owner, G2+ `DONOR-SURFACE-01`. Historical signed-off state does not qualify v2. |
+
+
+## Additional component cases
+
+- **`DONOR-ARRANGEMENT-01` / `DONOR-TRACE-01`** — At the pinned donor revision,
+  [`test_lfs_shared_trace_durability_and_recovery`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-storage/tests/lfs_shared_trace_durability_tests.rs#L29)
+  persists a spec for tenant 1 / `lfs_trades` with two consumers and two batches.
+  After reopen the spec and arrangement ID match; cut 50 is `{AAPL:150,
+  GOOG:2800}` and cut 100 is `{AAPL:155, GOOG:2800}`. The companion
+  `test_lfs_shared_trace_compaction_and_slowest_consumer` has consumers at 30
+  and 10, so compaction may advance only to 10; once both reach 30 it advances
+  to 30 and the surviving `key_x` value is `v3`. Adapt the logical expected
+  cuts and retention constraints; do not inherit the old storage format.
+- **`DONOR-FRONTIER-01`** — The pinned donor
+  [`cluster_frontier_is_non_decreasing`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-control/src/frontier.rs#L1166)
+  ingests shard 0 at epoch 5 then stale epoch 3; the expected frontier is 5.
+  The new progress/publication contract additionally needs scope and generation
+  checks, which this old case alone does not establish.
+- **`DONOR-SIM-01`** — The pinned donor
+  [`test_crash_at_v2_to_v3_migration_boundary_recovery`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-sim/tests/sim_shared_trace_crash_boundary_tests.rs#L24)
+  writes `k1:v1`, `k2:v2`, `k3:v3`, interrupts after one migrated object, and
+  expects all three values after resuming. Reuse the interruption/no-loss
+  obligation, not a promise to read the donor's V2 or V3 physical formats.
