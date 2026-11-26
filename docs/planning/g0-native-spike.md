@@ -10,8 +10,9 @@ simultaneous-input cross-term. It accumulates grouped counts and integer-cent
 sums with checked arithmetic and replaces the state only after the entire epoch
 is accepted. Its input is two Arrow record batches with signed BIGINT cents,
 not a public SQL or Arrow DECIMAL interface. The fixture's DECIMAL(18,2)
-range is checked, and the output sum uses signed 128-bit cents; this is not the
-G1 numeric matrix.
+range is checked. Output is a weighted Arrow delta batch containing
+DECIMAL(38,2) revenue, with signed 128-bit cents; this is not the G1 numeric
+matrix.
 
 The fixed per-interval input limit is 128 total rows and 16 KiB reported Arrow
 array memory, region strings are at most 32 bytes, and retained customer plus
@@ -20,7 +21,9 @@ there is no internal batch queue. Exceeding a limit rejects the whole interval,
 and tests check unchanged state on resource and preimage errors. These are
 logical/input bounds, not a measured process resident-memory ceiling: allocator
 and Arrow overhead, peak memory, allocation failure and process headroom have
-not been qualified. The caller already owns its Arrow buffers on entry.
+not been qualified. A preliminary release-test RSS measurement is recorded in
+[the local memory probe](../../evidence/g0-4/memory-profile.md); it is not a hard
+process cap. The caller already owns its Arrow buffers on entry.
 
 `frozen_w1g_all_cuts` compares all five cuts to frozen expected rows and, for
 each nonempty epoch, the independent batch evaluator and ungrouped-count
