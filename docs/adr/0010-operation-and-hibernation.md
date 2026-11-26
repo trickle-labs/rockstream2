@@ -1,46 +1,35 @@
-# ADR 0010: one binary with durable suspension and hibernation
+# ADR 0010: single binary, stateless compute scale-to-zero, and workload-eligible hibernation
 
-**Status:** Proposed requirement; no stop/resume or operational qualification has run. **Date:** 2026-11-25. **Owners:** runtime, storage, connectors and operations roles.
+**Status:** Proposed operational architecture; qualified progressively in G2 and G4. **Date:** 2026-11-26. **Owners:** runtime, storage, connectors, and operations roles.
 
 ## Context
 
-Rockstream should be easy to run for one small workload and for a distributed installation. An idle database should not require an always-on coordination cluster merely to preserve its state. Shared computation and streaming ingestion can nevertheless impose real work, retention and freshness obligations while an individual view is idle.
+Rockstream should be effortless to run locally and in the cloud, with one binary and no mandatory external etcd, ZooKeeper, Redis, SQL catalog, or Kubernetes. At the same time, **forcing zero-process full hibernation onto every online workload distorts read latency and metadata design** for workloads that cannot sleep anyway (continuous PostgreSQL CDC holding replication slots, interactive <5 ms read models, active subscriptions, and Kafka sinks).
 
 ## Decision
 
-Ship one binary with composable roles. Support an embedded process with qualified durable local storage, one cloud process plus a qualified object-store bucket, and a distributed deployment of the same binary. No profile requires etcd, ZooKeeper, Redis, a separate catalog database or Kubernetes. Compiled libraries are ordinary implementation dependencies. Use the object-backed metadata direction in [ADR 0003](0003-publication-and-metadata.md); eligible running processes perform coordination, with no dedicated resident coordinator required by the sleeping profile.
+Ship **one binary with composable roles** across three simple topologies: embedded local process, single-process cloud (binary + object store), and distributed cloud (multiple instances of the same binary). Separate two distinct elasticity capabilities so neither distorts the other:
 
-Separate authoritative state from disposable compute. Protected data and metadata survive the loss of every cloud worker and its local cache. SlateDB is the preferred state backend. The local embedded adapter must qualify crash durability and exclusive ownership; a filesystem adapter is not assumed to provide the cloud conditional-update contract without validation.
+1. **Stateless compute scale-to-zero (all cloud profiles):** Maintenance and serving worker pools hold no authoritative state and scale down to zero whenever their workload is idle, while required ingestion or optional Raft voters remain active.
+2. **Full zero-process hibernation (`Active → Draining → Dormant → Restoring → Active`, Object-Native profile only):** Supported for **eligible workloads**—scheduled, intermittent, dev/staging, or batch-replayed pipelines that have no live continuous-ingestion slot, due timer, active subscription, or tight cold-read latency SLA, and have a documented manual or external platform activation trigger.
 
-Support continuous, freshness-batched, scheduled and on-demand maintenance. Logical MVCC and per-consumer cursors let one consumer sleep while another advances a shared arrangement, subject to retained history and explicit publication dependencies. Whole-deployment hibernation is a distinct, admitted lifecycle transition, `Active → Draining → Dormant → Restoring → Active`, recorded in authoritative metadata.
+### Full hibernation contract (for eligible Object-Native workloads)
 
-Each consumer has an independent retention, maintenance and recovery budget. For scheduled or on-demand work, compare continuous maintenance, retaining incremental history, replay from a protected base/input log, and rebuild from a durable snapshot with a certified tail. Choose only among qualified strategies satisfying the same source, retained-cut and freshness obligations, including cold reconstruction and catch-up. Rebuilding current state cannot replace promised history; initial required state stays durable until any replacement recipe and retention handoff are qualified. Isolate an expensive consumer when sharing costs more or violates another consumer's admitted SLO.
+Before entering `Dormant`: serialize admissions/wake requests against the transition, protect all accepted input, published roots, history, and outbox state via non-expiring metadata/checkpoint references, and fence retiring owners in metadata. On resume, an external caller or launcher starts the binary; it reads the authoritative root, acquires fresh ownership generations via CAS, verifies source/cursor continuity, and replays accepted unpublished input. Concurrent activators and crashes mid-drain use the exact same fencing and recovery protocol as crash recovery.
 
-Before dormancy, serialize admissions and wake requests against the transition; publish completed work or retain accepted input for replay; protect exact state, history, outbox and recovery roots; and fence retiring owners. Protection cannot rely on the stopped process renewing a lease or checkpoint. On resume, re-read the authoritative root, conditionally acquire fresh generations, validate source/cursor continuity, restore protected state and replay under the ordinary correctness protocol. Concurrent activators and a crash during drain/resume must be safe.
+### Honest eligibility boundaries
 
-## What full hibernation requires
-
-| Requirement | Contract |
+| Workload characteristic | Supported elasticity mode |
 | --- | --- |
-| Input and source continuity | Qualify upstream retention for the full sleep and catch-up interval, or have no continuing input obligation. If ingestion must remain active, only other pools can suspend; this is partial suspension. A lost interval causes explicit resnapshot/rebuild. |
-| Freshness and temporal work | Admit sleep only if deadlines permit it; durable timers still require activation when due. |
-| Reads, subscriptions and sinks | Honor existing pin/cursor/delivery obligations or close/transfer them under their contracts. Retain pending outbox data. |
-| Retention | Preserve roots and replay coverage independently of live processes; include dormant storage and deferred cleanup in quotas/cost. |
-| Activation | Manual restart or a configured platform/launcher trigger starts the process. A fully stopped binary cannot receive a new request or wake itself. |
-| Resume latency | Include startup, restore and catch-up in the cold request's deadline; warm-cache targets do not apply. |
-
-An always-on gateway or external event/schedule trigger is an optional integration with its own cost. A binary-plus-bucket deployment supports manual hibernation and restart without mandating such an integration. Full Rockstream scale-to-zero means zero running Rockstream processes; stopping only eligible pools is partial suspension. Neither means zero storage cost, continuous ingestion without an ingester, or automatic activation without a live trigger.
+| Scheduled/intermittent views, dev/staging, replayable Kafka with long retention | Full zero-process hibernation (Object-Native profile) |
+| Continuous PostgreSQL CDC (holding WAL slots), active Kafka sinks, durable timers | Partial suspension (stateless maintenance/serving scale to zero; ingester/sink stays active) |
+| Low-latency interactive read models (≤100 ms freshness, high-rate strict reads) | Low-Latency Cloud profile (Embedded Raft voters resident; stateless workers elastic) |
 
 ## Alternatives and consequences
 
-A required external coordination cluster adds a separate operational system and idle capacity floor. Embedding a Raft library can avoid a separately installed service, but [Raft requires majority agreement](https://raft.github.io/raft.pdf) for committed decisions; it does not alone supply activation, source retention, or a hibernation protocol. Keep embedded Raft as an evidence-driven alternative if the object-backed metadata design cannot satisfy measured needs. Adopting it would require explicit storage, membership, restart and sleeping-profile qualification.
+- **Making full zero-process hibernation a hard P0 veto over every online profile:** Rejected; penalizes the primary online read-model and CDC workloads for a dormancy capability those workloads cannot legally enter.
+- **Requiring an external coordinator cluster:** Rejected; both Object-Native and optional Embedded Raft profiles run entirely inside the single Rockstream binary.
 
-The chosen design accepts object-store request latency and an initially shared metadata root as costs to measure. Batching, history retention, cache restoration and consumer isolation need explicit budgets. Sleep can save compute but increase retained storage and wake-up work. Report these effects through sleep eligibility/blockers, active roles, consumer cursors, expected catch-up, and measured cold-start cost.
+## Evidence
 
-The object-native profile remains the default and may qualify zero-process hibernation from protected object state. An embedded-consensus profile uses the same logical metadata state machine but has its own durable log, membership, active-quorum and stop/restart contract; it cannot inherit the object-native hibernation claim. If source or freshness obligations defeat full hibernation, offer explicitly qualified partial suspension. No failed economic experiment relaxes recovery or retention guarantees.
-
-## Evidence and gates
-
-G0 runs an object-metadata contention probe and a complete stop/resume experiment with empty caches. G2 establishes single-process durable suspension and failure recovery. G3 adds independent shared consumers, cursor expiry/resnapshot and retained logical history. G4 proves distributed drain, concurrent wake-up and stale-owner rejection. G6 qualifies operators' runbooks, realistic idle/active cycles, connectors, restore and complete cost. These are required experiments, not results established by this ADR.
-
-The detailed lifecycle and obligation matrix are in [runtime and operations](../design/runtime-and-operations.md); atomic publication, pin/GC races and recovery authority are governed by [consistency and storage](../design/consistency-and-storage.md).
+G2 qualifies single-process durable stop/restart from object storage with empty local caches; G3 accounts for shared consumer cursors; G4 qualifies distributed drain, concurrent activation, and stale-owner fencing; G6 qualifies runbooks and measured active/idle economics. [Runtime and operations](../design/runtime-and-operations.md) defines the detailed lifecycle.
