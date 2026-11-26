@@ -1,27 +1,43 @@
 //! Independent batch evaluation of the fixed W1-G input; no incremental operators.
+use std::collections::BTreeMap;
+
+pub fn evaluate(
+    customers: &BTreeMap<i64, String>,
+    orders: &BTreeMap<i64, (i64, i64)>,
+) -> BTreeMap<String, (i64, i64)> {
+    let mut groups = BTreeMap::<String, (i64, i64)>::new();
+    for (customer, cents) in orders.values() {
+        if let Some(region) = customers.get(customer) {
+            let group = groups.entry(region.clone()).or_default();
+            group.0 = group.0.checked_add(1).expect("W1-G count overflow");
+            group.1 = group.1.checked_add(*cents).expect("W1-G sum overflow");
+        }
+    }
+    groups
+}
+
+/// SQL ungrouped COUNT has one result row, including when no rows join.
+pub fn ungrouped_count(
+    customers: &BTreeMap<i64, String>,
+    orders: &BTreeMap<i64, (i64, i64)>,
+) -> [i64; 1] {
+    [i64::try_from(
+        orders
+            .values()
+            .filter(|(customer, _)| customers.contains_key(customer))
+            .count(),
+    )
+    .expect("W1-G count overflow")]
+}
+
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use super::*;
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     enum Row {
         Customer { id: i64, region: String },
         Order { id: i64, customer: i64, cents: i64 },
-    }
-
-    fn evaluate(
-        customers: &BTreeMap<i64, String>,
-        orders: &BTreeMap<i64, (i64, i64)>,
-    ) -> BTreeMap<String, (i64, i64)> {
-        let mut groups = BTreeMap::<String, (i64, i64)>::new();
-        for (customer, cents) in orders.values() {
-            if let Some(region) = customers.get(customer) {
-                let group = groups.entry(region.clone()).or_default();
-                group.0 = group.0.checked_add(1).expect("W1-G count overflow");
-                group.1 = group.1.checked_add(*cents).expect("W1-G sum overflow");
-            }
-        }
-        groups
     }
 
     #[test]
@@ -42,7 +58,9 @@ mod tests {
         let mut customers = BTreeMap::new();
         let mut orders = BTreeMap::new();
         assert_eq!(evaluate(&customers, &orders), BTreeMap::new());
+        assert_eq!(ungrouped_count(&customers, &orders), [0]);
         let mut current_epoch = 0;
+        let expected_counts = [3, 3, 2, 0];
         for line in fixture
             .lines()
             .filter(|line| !line.starts_with('#') && !line.is_empty())
@@ -53,6 +71,10 @@ mod tests {
                 assert_eq!(
                     evaluate(&customers, &orders),
                     cuts.remove(&(current_epoch + 1)).unwrap_or_default()
+                );
+                assert_eq!(
+                    ungrouped_count(&customers, &orders),
+                    [expected_counts[usize::from(current_epoch)]]
                 );
                 assert_eq!(epoch, current_epoch + 1);
                 current_epoch = epoch;
@@ -103,7 +125,6 @@ mod tests {
             cuts.remove(&4).unwrap_or_default()
         );
         assert!(cuts.is_empty());
-        // SQL ungrouped COUNT over an empty relation returns one row containing zero.
-        assert_eq!(orders.len(), 0);
+        assert_eq!(ungrouped_count(&customers, &orders), [0]);
     }
 }
