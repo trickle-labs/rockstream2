@@ -56,3 +56,26 @@ row. The diagnostic budget is 64 MiB peak RSS for this process in the named
 local environment. Missing OS counters or execution failure are inconclusive.
 This boundary scenario still does not enforce process RSS or test allocation
 failure and is not promotion evidence.
+
+Source candidate `e83ab298ad02c566daf1fdd9d50c6456744d3ae5`; binary SHA-256
+`37fd7f4dbd28233f6d5b84453bb08029df85e461eaf072bf954a6bc520375473`.
+The environment matches the initial measurement. Host execution returned:
+
+```
+running 1 test
+ test tests::configured_boundary_workload ... ok
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out
+        0.16 real         0.00 user         0.00 sys
+             6422528  maximum resident set size
+                 583  page reclaims
+                   0  page faults
+                   0  swaps
+                   7  involuntary context switches
+            33443965  instructions retired
+            14098951  cycles elapsed
+             2015664  peak memory footprint
+```
+
+This observed maximum is below the diagnostic budget. The result is not a
+hard resident-memory limit: caller allocations, allocator failure and process
+headroom remain outside enforcement.
