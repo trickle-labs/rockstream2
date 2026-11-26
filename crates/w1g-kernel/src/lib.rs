@@ -1,7 +1,8 @@
 //! Bounded, single-interval W1-G incremental kernel spike.
-use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
+use arrow_array::{Array, Decimal128Array, Int64Array, RecordBatch, StringArray};
 use arrow_schema::DataType;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 const MAX_ROWS: usize = 128;
 const MAX_REGION_BYTES: usize = 32;
@@ -70,7 +71,7 @@ impl Kernel {
         epoch: u64,
         customers: &RecordBatch,
         orders: &RecordBatch,
-    ) -> Result<(), &'static str> {
+    ) -> Result<RecordBatch, &'static str> {
         if epoch != self.epoch {
             return Err("unexpected epoch");
         }
@@ -122,6 +123,9 @@ impl Kernel {
             }
             match weight {
                 1 if !next.customers.contains_key(&id) => {
+                    if next.customers.len() + next.orders.len() >= MAX_ROWS {
+                        return Err("state limit");
+                    }
                     next.customers.insert(id, region.to_owned());
                 }
                 -1 if next.customers.get(&id).is_some_and(|r| r == region) => {
@@ -160,6 +164,9 @@ impl Kernel {
             }
             match weight {
                 1 if !next.orders.contains_key(&id) => {
+                    if next.customers.len() + next.orders.len() >= MAX_ROWS {
+                        return Err("state limit");
+                    }
                     next.orders.insert(id, order.clone());
                 }
                 -1 if next.orders.get(&id) == Some(&order) => {
@@ -181,15 +188,44 @@ impl Kernel {
             }
         }
         next.epoch = next.epoch.checked_add(1).ok_or("epoch overflow")?;
+        let mut regions = Vec::new();
+        let mut counts = Vec::new();
+        let mut sums = Vec::new();
+        let mut weights = Vec::new();
+        for (region, old) in &self.groups {
+            if next.groups.get(region) != Some(old) {
+                regions.push(region.as_str());
+                counts.push(old.0);
+                sums.push(old.1);
+                weights.push(-1);
+            }
+        }
+        for (region, new) in &next.groups {
+            if self.groups.get(region) != Some(new) {
+                regions.push(region.as_str());
+                counts.push(new.0);
+                sums.push(new.1);
+                weights.push(1);
+            }
+        }
+        let decimal = Decimal128Array::from(sums)
+            .with_precision_and_scale(38, 2)
+            .map_err(|_| "invalid decimal output")?;
+        let output = RecordBatch::try_from_iter(vec![
+            ("region", Arc::new(StringArray::from(regions)) as _),
+            ("count", Arc::new(Int64Array::from(counts)) as _),
+            ("revenue", Arc::new(decimal) as _),
+            ("weight", Arc::new(Int64Array::from(weights)) as _),
+        ])
+        .map_err(|_| "invalid output batch")?;
         *self = next;
-        Ok(())
+        Ok(output)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
     fn customers(rows: &[(i64, &str, i64)]) -> RecordBatch {
         RecordBatch::try_from_iter(vec![
@@ -238,6 +274,7 @@ mod tests {
             kernel.ungrouped_count().unwrap().values(),
             &w1g_oracle::ungrouped_count(&BTreeMap::new(), &BTreeMap::new())
         );
+        let mut observed = BTreeMap::<(String, i64, i128), i64>::new();
         let mut oracle_customers = BTreeMap::new();
         let mut oracle_orders = BTreeMap::new();
         let input = include_str!("../../../fixtures/w1g/transactions.csv");
@@ -275,7 +312,33 @@ mod tests {
                     assert_eq!(oracle_orders.remove(&id), Some((customer, cents)));
                 }
             }
-            kernel.apply(epoch, &customers(&c), &orders(&o)).unwrap();
+            let delta = kernel.apply(epoch, &customers(&c), &orders(&o)).unwrap();
+            let regions = delta
+                .column(0)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let counts = delta
+                .column(1)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap();
+            let sums = delta
+                .column(2)
+                .as_any()
+                .downcast_ref::<Decimal128Array>()
+                .unwrap();
+            let weights = delta
+                .column(3)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap();
+            for i in 0..delta.num_rows() {
+                *observed
+                    .entry((regions.value(i).to_owned(), counts.value(i), sums.value(i)))
+                    .or_default() += weights.value(i);
+            }
+            observed.retain(|_, weight| *weight != 0);
             let oracle = w1g_oracle::evaluate(&oracle_customers, &oracle_orders)
                 .into_iter()
                 .map(|(region, (count, cents))| (region, (count, i128::from(cents))))
@@ -304,6 +367,11 @@ mod tests {
                 }
             }
             assert_eq!(kernel.result(), &want, "cut {}", epoch + 1);
+            let expected_bag = want
+                .iter()
+                .map(|(region, (count, sum))| ((region.clone(), *count, *sum), 1))
+                .collect::<BTreeMap<_, _>>();
+            assert_eq!(observed, expected_bag, "Arrow output at cut {}", epoch + 1);
         }
         assert_eq!(kernel.ungrouped_count().unwrap().values(), &[0]);
     }
@@ -316,20 +384,24 @@ mod tests {
             kernel.apply(1, &customers(&[]), &orders(&[])),
             Err("unexpected epoch")
         );
-        let too_many = vec![(1, "North", 1); MAX_ROWS + 1];
-        assert!(
-            kernel
-                .apply(0, &customers(&too_many), &orders(&[]))
-                .is_err()
+        let huge = "x".repeat(MAX_INPUT_BYTES + 1);
+        assert_eq!(
+            kernel.apply(0, &customers(&[(1, &huge, 1)]), &orders(&[])),
+            Err("input limit")
         );
-        assert!(
-            kernel
-                .apply(
-                    0,
-                    &customers(&[(1, "North", 1), (1, "South", -1)]),
-                    &orders(&[])
-                )
-                .is_err()
+        assert_eq!(kernel, before);
+        let too_many = vec![(1, "North", 1); MAX_ROWS + 1];
+        assert_eq!(
+            kernel.apply(0, &customers(&too_many), &orders(&[])),
+            Err("input limit")
+        );
+        assert_eq!(
+            kernel.apply(
+                0,
+                &customers(&[(1, "North", 1), (1, "South", -1)]),
+                &orders(&[])
+            ),
+            Err("invalid customer delta")
         );
         assert_eq!(
             kernel.apply(0, &customers(&[]), &orders(&[(1, 1, i64::MAX, 1)])),
@@ -340,6 +412,45 @@ mod tests {
             .apply(0, &customers(&[(1, "North", 1)]), &orders(&[]))
             .unwrap();
     }
+    #[test]
+    fn invalid_inputs_and_late_order_failure_are_atomic() {
+        let mut kernel = Kernel::default();
+        let before = kernel.clone();
+        let null_customer = RecordBatch::try_from_iter(vec![
+            ("id", Arc::new(Int64Array::from(vec![None])) as _),
+            ("region", Arc::new(StringArray::from(vec!["N"])) as _),
+            ("weight", Arc::new(Int64Array::from(vec![1])) as _),
+        ])
+        .unwrap();
+        assert_eq!(
+            kernel.apply(0, &null_customer, &orders(&[])),
+            Err("null input")
+        );
+        let wrong_type = RecordBatch::try_from_iter(vec![
+            ("id", Arc::new(StringArray::from(vec!["1"])) as _),
+            ("region", Arc::new(StringArray::from(vec!["N"])) as _),
+            ("weight", Arc::new(Int64Array::from(vec![1])) as _),
+        ])
+        .unwrap();
+        assert_eq!(
+            kernel.apply(0, &wrong_type, &orders(&[])),
+            Err("expected non-null BIGINT")
+        );
+        assert_eq!(
+            kernel.apply(0, &customers(&[(1, "N", 2)]), &orders(&[])),
+            Err("invalid customer delta")
+        );
+        assert_eq!(
+            kernel.apply(
+                0,
+                &customers(&[(1, "N", 1)]),
+                &orders(&[(1, 1, 100, 1), (2, 1, 100, -1)])
+            ),
+            Err("invalid order delta")
+        );
+        assert_eq!(kernel, before);
+    }
+
     #[test]
     fn state_and_region_limits_leave_state_unchanged() {
         let mut kernel = Kernel::default();
