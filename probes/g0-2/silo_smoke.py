@@ -4,7 +4,9 @@
 import concurrent.futures
 import http.client
 import json
+import select
 import subprocess
+import sys
 import time
 import uuid
 
@@ -37,6 +39,35 @@ def request(method, path="", value=None, condition=None):
 def expect(actual, expected, label):
     if actual != expected:
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
+
+
+def slate_recovery(binary):
+    def kill_at_ready(mode, prefix):
+        process = subprocess.Popen([binary, mode, prefix], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            if not select.select([process.stdout], [], [], 60)[0]:
+                raise RuntimeError(f"{mode} did not reach its crash boundary")
+            line = process.stdout.readline()
+            if line != b"READY\n":
+                raise RuntimeError(f"{mode} failed before crash boundary: {line!r} {process.stderr.read()!r}")
+        finally:
+            process.kill()
+            process.communicate(timeout=10)
+        expect(process.returncode, -9, f"{mode} SIGKILL")
+
+    def recover(prefix, mode="recover"):
+        return subprocess.run([binary, mode, prefix], capture_output=True, timeout=60)
+
+    kill_at_ready("publish", "crash-after-publish")
+    result = recover("crash-after-publish")
+    expect((result.returncode, result.stdout), (0, b"RECOVERED\n"), f"post-publish recovery: {result.stderr!r}")
+    kill_at_ready("publish", "crash-after-apply")
+    kill_at_ready("apply-and-wait", "crash-after-apply")
+    result = recover("crash-after-apply")
+    expect((result.returncode, result.stdout), (0, b"RECOVERED\n"), f"post-apply recovery: {result.stderr!r}")
+    mutant = recover("crash-after-apply", "recover-reapply")
+    if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
+        raise AssertionError(f"double-apply negative control was not detected: {mutant.stderr!r}")
 
 
 def main():
@@ -79,7 +110,13 @@ def main():
         if current[2] not in (b"racer-a", b"racer-b"):
             raise AssertionError(f"unexpected winning value: {current[2]!r}")
         expect(current[1], next(result[1] for result in writes if result[0] == 200), "current version")
-        print(json.dumps({"result": "pass", "image": IMAGE, "scope": "local conditional-write smoke only",
+        if len(sys.argv) == 2:
+            slate_recovery(sys.argv[1])
+        elif len(sys.argv) > 2:
+            raise ValueError("usage: silo_smoke.py [slate-probe-binary]")
+        print(json.dumps({"result": "pass", "image": IMAGE,
+                          "slatedb_recovery": "pass" if len(sys.argv) == 2 else "not run",
+                          "scope": "local smoke only; not G0.2 qualification",
                           "sample_ms": {"create": first[3], "matching_update": second[3],
                                         "concurrent_updates": [r[3] for r in writes], "read": current[3]}}, indent=2))
     finally:

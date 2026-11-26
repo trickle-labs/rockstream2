@@ -14,9 +14,25 @@ same version. The output includes individual local timings for diagnostics, not
 latency distributions or performance conclusions. The duplicate and stale
 writes must fail, and exactly one competing write must succeed.
 
+To also exercise a small SlateDB recovery slice, build the pinned standalone
+probe and pass its executable to the same runner:
+
+```sh
+cargo build --locked --manifest-path probes/g0-2/slate/Cargo.toml
+python3 probes/g0-2/silo_smoke.py probes/g0-2/slate/target/debug/g0-2-slate-probe
+```
+
+The Rust probe stages one immutable counter delta, conditionally creates a
+published root, and applies the delta and applied-cut marker in one durable
+SlateDB batch. The runner delivers SIGKILL after publication and after the
+durable batch, reopens the writable instance and verifies the count is one.
+A deliberate recovery mutation ignores the marker and must fail the same
+count assertion. This tests one interval and one writer; it does not exercise a
+kill *during* application, ownership takeover or checkpoint registration.
+
 This smoke test is **not G0.2 qualification**: it does not exercise a real
-provider, ambiguous responses, group commit, SlateDB layouts, fault-injected
-recovery, checkpoint registration or overlay caps. It cannot select a storage
+provider, ambiguous responses, group commit, W1-G, both SlateDB layouts,
+mid-apply recovery, checkpoint registration or overlay caps. It cannot select a storage
 layout or establish cloud latency, cost, or durability. Apply the predeclared
 qualification rubric and budgets separately for the real-provider run.
 
