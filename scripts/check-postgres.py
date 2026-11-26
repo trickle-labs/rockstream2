@@ -13,6 +13,9 @@ def rows(name):
 
 transactions = rows('transactions.csv')
 expected = rows('expected.csv')
+for row in expected:
+    if len(row) != 4 or row[1] not in ('North', 'South'):
+        raise ValueError('invalid expected region')
 sql = ['CREATE TEMP TABLE customers (id bigint primary key, region text COLLATE "C" NOT NULL);',
        'CREATE TEMP TABLE orders (id bigint primary key, customer bigint NOT NULL, amount numeric(18,2) NOT NULL);']
 query = 'SELECT c.region, count(*)::bigint AS n, sum(o.amount) AS revenue FROM customers c JOIN orders o ON c.id=o.customer GROUP BY c.region'
@@ -30,19 +33,22 @@ for epoch in range(4):
             continue
         identifier = int(identifier)
         if table == 'customer':
-            assert value in ('North', 'South')
+            if value not in ('North', 'South'):
+                raise ValueError('invalid fixture region')
             predicate = f"id={identifier} AND region='{value}'"
             vals = f"{identifier}, '{value}'"
             target = 'customers'
         else:
-            assert table == 'order'
+            if table != 'order':
+                raise ValueError('invalid fixture table')
             predicate = f'id={identifier} AND customer={int(value)} AND amount={int(cents)}::numeric/100'
             vals = f'{identifier}, {int(value)}, {int(cents)}::numeric/100'
             target = 'orders'
         if weight == '1':
             sql.append(f'INSERT INTO {target} VALUES ({vals});')
         else:
-            assert weight == '-1'
+            if weight != '-1':
+                raise ValueError('invalid fixture weight')
             sql.append(f"DO $$ BEGIN DELETE FROM {target} WHERE {predicate}; IF NOT FOUND THEN RAISE EXCEPTION 'missing preimage'; END IF; END $$;")
     sql.append('COMMIT;')
     check(epoch + 1)

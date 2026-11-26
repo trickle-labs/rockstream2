@@ -32,10 +32,13 @@ def valid(packages, nodes, workspace, allowed):
     return True
 
 
-metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--locked", "--format-version", "1"]))
+metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--locked", "--all-features", "--format-version", "1"]))
 packages = metadata["packages"]
 nodes = metadata["resolve"]["nodes"]
 workspace = set(metadata["workspace_members"])
+for package in packages:
+    if package["id"] not in workspace and package["source"] is None:
+        sys.exit("path dependency is not a workspace member")
 if not valid(packages, nodes, workspace, ALLOWED):
     sys.exit("disallowed or unregistered workspace dependency")
 # Exercise a prohibited edge and a path hidden behind an external dependency.

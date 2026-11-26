@@ -35,24 +35,33 @@ for epoch in (0, 1):
     broken = add(prior, join(dl, right), join(left, dr))
     correct = add(broken, join(dl, dr))
     left, right = add(left, dl), add(right, dr)
-    assert correct == join(left, right), f'complete delta does not match batch at epoch {epoch}'
+    if correct != join(left, right):
+        raise ValueError(f'complete delta does not match batch at epoch {epoch}')
     if epoch == 1:
-        assert broken != correct, 'cross-term negative control escaped detection'
+        if broken == correct:
+            raise ValueError('cross-term negative control escaped detection')
         expected = Counter({('South', 1000): 1, ('South', 2500): 1, ('South', 400): 1})
-        assert correct == expected, 'batch result disagrees with frozen cut 2'
+        if correct != expected:
+            raise ValueError('batch result disagrees with frozen cut 2')
 print('omitted join cross-term detected at W1-G cut 2')
 
 # Donor regression: delta_native_join_tests::test_delta_native_join_inner_i64.
 donor_left = Counter({('1', '10'): 2, ('2', '20'): 1})
 donor_right = Counter({('101', '1', '0'): 1, ('102', '1', '30'): 1})
 # This fixture's batch join returns (left payload, right payload) with product weights.
-donor_actual = Counter()
-for (key, left_value), lw in donor_left.items():
-    for (_, right_key, right_value), rw in donor_right.items():
-        if key == right_key:
-            donor_actual[(key, left_value, right_key, right_value)] += lw * rw
+def donor_join(left, right):
+    result = Counter()
+    for (key, left_value), lw in left.items():
+        for (_, right_key, right_value), rw in right.items():
+            if key == right_key:
+                result[(key, left_value, right_key, right_value)] += lw * rw
+    return result
+
+donor_actual = donor_join(donor_left, donor_right)
 donor_expected = Counter({('1', '10', '1', '0'): 2, ('1', '10', '1', '30'): 2})
-assert donor_actual == donor_expected
-retraction = Counter({row: -weight for row, weight in donor_actual.items()})
-assert retraction == Counter({('1', '10', '1', '0'): -2, ('1', '10', '1', '30'): -2})
+if donor_actual != donor_expected:
+    raise ValueError('donor weighted join mismatch')
+retraction = donor_join(Counter({('1', '10'): -2}), donor_right)
+if retraction != Counter({('1', '10', '1', '0'): -2, ('1', '10', '1', '30'): -2}):
+    raise ValueError('donor retraction mismatch')
 print('donor weighted inner join independent expectation passed')
