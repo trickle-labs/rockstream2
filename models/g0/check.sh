@@ -4,7 +4,7 @@ set -eu
 quint=${QUINT:-quint}
 model=$(dirname "$0")/protocol.qnt
 "$quint" typecheck "$model"
-"$quint" verify "$model" --invariants publication fencing_and_outcomes gc --max-steps 10 --verbosity 0
+"$quint" verify "$model" --invariants publication fencing_and_outcomes gc --max-steps 11 --verbosity 0
 
 "$quint" verify "$model" --observation 's.head == 2 and s.outcome1 == 1 and s.metadataDone and s.response1 and s.reply1 == 1 and s.effects1 == 1' --max-steps 8 --verbosity 0
 
@@ -36,11 +36,23 @@ model=$(dirname "$0")/protocol.qnt
 
 "$quint" verify "$model" --no-invariant --step bad_duplicate_step --observation 's.badPublication and not(s.badSealCommit) and s.duplicate and s.receipts == Set(1, 2) and s.receipt1Attempt == s.attempt and s.receipt2Attempt == s.attempt and s.receipt1Scope == expectedScope and s.receipt2Scope == expectedScope' --max-steps 8 --verbosity 0
 
-for control in publication:bad_publication_step publication:bad_seal_step publication:bad_atomic_step publication:bad_duplicate_step publication:bad_foreign_step publication:bad_mixed_step publication:bad_missing_step publication:bad_interval_step publication:bad_plan_step publication:bad_plan_revision_step publication:bad_parent_step publication:bad_revision_step fencing_and_outcomes:bad_reuse_step fencing_and_outcomes:bad_refresh_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_pin_step gc:bad_retire_step gc:bad_resurrection_step gc:bad_publish_retired_step; do
+"$quint" verify "$model" --no-invariant --step bad_undurable_step --observation 's.badDataCommit and not(s.stageDurable) and s.stageProtected and s.visible1' --max-steps 8 --verbosity 0
+"$quint" verify "$model" --no-invariant --step bad_unprotected_step --observation 's.badDataCommit and s.stageDurable and s.stageClosed and not(s.stageProtected) and s.visible1' --max-steps 8 --verbosity 0
+"$quint" verify "$model" --no-invariant --step bad_foreign_object_step --observation 's.badPublication and not(s.badSealCommit) and not(s.badDataCommit) and s.receipt1Object == 2 and s.receipt2Object == 1' --max-steps 8 --verbosity 0
+
+"$quint" verify "$model" --observation 's.stageDurabilityAdvanced and s.publishedDataReady and s.effects1 == 1 and not(s.prepared)' --max-steps 8 --verbosity 0
+"$quint" verify "$model" --no-invariant --step bad_stage_retire_step --observation 's.badGc and s.retired and not(s.prepared) and s.abandonedAttempt != 0 and s.abandonedAttempt == s.attempt and s.stageProtected and not(s.root) and not(s.pinned)' --max-steps 8 --verbosity 0
+
+"$quint" verify "$model" --no-invariant --step bad_publish_retired_step --observation 's.badGc and s.badDataCommit and s.retired and s.visible1 and s.stageDurable and not(s.stageProtected)' --max-steps 10 --verbosity 0
+
+"$quint" verify "$model" --observation 'not(s.prepared) and s.abandonedAttempt != 0 and s.abandonedAttempt == s.attempt and s.stageProtected and not(s.root) and not(s.retired)' --max-steps 8 --verbosity 0
+
+for control in publication:bad_publication_step publication:bad_seal_step publication:bad_atomic_step publication:bad_duplicate_step publication:bad_foreign_object_step publication:bad_undurable_step publication:bad_unprotected_step publication:bad_foreign_step publication:bad_mixed_step publication:bad_missing_step publication:bad_interval_step publication:bad_plan_step publication:bad_plan_revision_step publication:bad_parent_step publication:bad_revision_step fencing_and_outcomes:bad_reuse_step fencing_and_outcomes:bad_refresh_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_stage_retire_step gc:bad_pin_step gc:bad_retire_step gc:bad_resurrection_step gc:bad_publish_retired_step; do
   invariant=${control%%:*}
   step=${control#*:}
   bound=8
-  [ "$step" != bad_retry_step ] || bound=10
+  [ "$step" != bad_retry_step ] || bound=11
+  [ "$step" != bad_publish_retired_step ] || bound=10
   output=$("$quint" verify "$model" --invariant "$invariant" --step "$step" --max-steps "$bound" --verbosity 0 2>&1) && {
     echo "ERROR: $step did not produce a counterexample" >&2
     exit 1
