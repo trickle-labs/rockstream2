@@ -1,6 +1,6 @@
 # Testing and verification architecture
 
-**Status:** Proposed, 2026-11-25. This is the engineering contract for a future implementation, not evidence of an executed test suite. [Qualification](../planning/qualification.md) defines the domain-specific cases, independent oracles, proof obligations and release evidence. [Development workflow](development-workflow.md) defines when checks execute.
+**Status:** Proposed, 2026-11-26. This is the engineering contract for a future implementation, not evidence of an executed test suite. [Qualification](../planning/qualification.md) defines the domain-specific cases, independent oracles, proof obligations and release evidence. [Development workflow](development-workflow.md) defines when checks execute.
 
 ## 1. Quality through testability
 
@@ -38,16 +38,16 @@ A deterministic run must record the source/build, test and harness versions, see
 
 Keep deterministic replay focused where it gives genuine leverage, and never pretend a partial simulator covers third-party thread pools:
 
-- **Pure state machines (deterministic replay + `proptest`):** Metadata transitions, compositional batching, publication validation, fencing, grace-window GC reachability, operator/Z-set execution, and progress accounting are written as pure, deterministic state transitions. Exercise them under seeded fault schedules, delayed/duplicated messages, lost CAS responses, and shrinking property tests from G1 onward.
-- **Third-party runtime & storage internals (real-process crash & chaos tests):** Tokio's work-stealing scheduler, SlateDB's internal flush/compaction/checkpoint threads, DataFusion, and AWS S3 HTTP retry stacks run *outside* Rockstream's scheduler. Verify these boundaries directly with **real-process kill/restart tests** (`SIGKILL` before/after durable boundaries, lost caches, competing activators, real S3/MinIO, and real PostgreSQL/Kafka) starting in G0.2 and G2—rather than building an elaborate FoundationDB-style cluster simulator in G0 that cannot faithfully execute SlateDB or Tokio internals.
+- **Pure state machines (deterministic replay + `proptest`):** Metadata transitions, compositional batching, publication validation, fencing, abstract GC reachability, operator/Z-set execution, and progress accounting are written as pure, deterministic state transitions. Exercise them under seeded fault schedules, delayed/duplicated messages, lost CAS responses, and shrinking property tests from G1 onward. Lease/VM-pause/clock-discontinuity modeling is a G4.0 extension.
+- **Third-party runtime & storage internals (real-process crash & chaos tests):** Tokio's work-stealing scheduler, SlateDB's internal flush/compaction/checkpoint threads, DataFusion, and object-store HTTP retry stacks run *outside* Rockstream's scheduler. Verify these boundaries directly with **real-process kill/restart tests** (`SIGKILL` before/after durable boundaries, lost caches, competing activators, real object storage, and real PostgreSQL/Kafka) where each consuming gate requires them—rather than building an elaborate FoundationDB-style cluster simulator in G0 that cannot faithfully execute SlateDB or Tokio internals. G0.2 checks exact-parent reopen and cold recovery; G4.0 covers separate-process readers and lease/GC behavior.
 - **Named fault sites (G2+):** Use explicit, test-only semantic fault-site hooks (disabled in release production builds) at durability and publication boundaries (before/after input segment upload, metadata CAS, checkpoint creation, receipt sealing) so real-process and state-machine tests deterministically hit crash windows and verify that the requested fault actually fired.
 
 | Mode | When introduced | What it verifies |
 | --- | --- | --- |
 | Property + independent oracle | G0.1, G1 | Exact Z-set/SQL multiset equality at every cut, numeric/NULL/empty laws, negative controls |
-| Quint protocol model | G0.3 | Publication atomicity, ownership fencing, compositional batch outcomes, grace-window GC safety |
+| Quint protocol model | G0.3, extended at G4.0 | G0.3: publication atomicity, ownership fencing, compositional batch outcomes and abstract GC pin/retire reachability. G4.0: reader leases, VM pauses, clock discontinuities and grace-window GC safety |
 | Deterministic state-machine replay | G2 | Pure metadata/progress/exchange transitions under arbitrary interleavings and lost responses |
-| Real-process crash & chaos | G0.2, G2, G4 | Actual `SIGKILL`, S3/MinIO conditional-write races, SlateDB checkpoint/reopen, PostgreSQL/Kafka failover |
+| Real-process crash & chaos | G0.2, G2, G4.0/G4 | G0.2: provider conditional-write behavior and SlateDB reopen. G2: accepted-input recovery and single-process restart. G4.0/G4: separate-process readers, lease/grace GC and distributed failures |
 
 Failure artifacts record revision, workload/seed, replay command, affected invariant, and first expected/observed divergence. Keep the harness small and fast enough to run locally with one command.
 

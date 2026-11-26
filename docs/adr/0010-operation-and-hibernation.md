@@ -4,7 +4,7 @@
 
 ## Context
 
-Rockstream should be effortless to run locally and in the cloud, with one binary and no mandatory external etcd, ZooKeeper, Redis, SQL catalog, or Kubernetes. At the same time, **forcing zero-process full hibernation onto every online workload distorts read latency and metadata design** for workloads that cannot sleep anyway (continuous PostgreSQL CDC holding replication slots, interactive <5 ms read models, active subscriptions, and Kafka sinks).
+Rockstream should be effortless to run locally and in the cloud, with one binary and no mandatory external etcd, ZooKeeper, Redis, SQL catalog, or Kubernetes. At the same time, **forcing zero-process full hibernation onto every online workload distorts read latency and metadata design** for workloads that cannot sleep anyway (continuous PostgreSQL CDC holding replication slots, interactive reads with an unmeasured sub-5 ms target, active subscriptions, and Kafka sinks).
 
 ## Decision
 
@@ -23,7 +23,7 @@ Before entering `Dormant`: serialize admissions/wake requests against the transi
 | --- | --- |
 | Scheduled/intermittent views, dev/staging, replayable Kafka with long retention | Full zero-process hibernation (Object-Native profile) |
 | Continuous PostgreSQL CDC (holding WAL slots), active Kafka sinks, durable timers | Partial suspension (stateless maintenance/serving scale to zero; ingester/sink stays active) |
-| Low-latency interactive read models (`<10 ms` strict-latest reads; or `≤100 ms` P99 freshness with optional fast WAL tier) | Low-Latency Cloud profile (Embedded OpenRaft voters resident with durable voter disks; stateless workers elastic) |
+| Low-latency interactive read models (unmeasured `<10 ms` strict-latest target; or unmeasured `≤100 ms` P99 freshness target with optional fast WAL tier) | Low-Latency Cloud profile (Embedded OpenRaft voters resident with durable voter disks; stateless workers elastic), only after G4.0 evidence |
 
 ## Alternatives and consequences
 

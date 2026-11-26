@@ -4,11 +4,14 @@
 
 ## 1. The smallest exceptional Rockstream
 
-Focus on a narrow, rock-solid SQL-first streaming database that maintains exact durable results, operates from one binary with zero external coordination dependencies, and delivers fast warm reads. Build **step by step**:
-1. **G0 (2–4 weeks):** Prove existential storage/metadata/overlay physics on real object storage, write one concise Quint protocol model, bootstrap fast CI, and lock `W1-G` + native kernel direction.
-2. **G1:** Pure in-memory semantic kernel with independent PostgreSQL/batch oracle verification (`COUNT`/`SUM`/`AVG`, inner equi-joins, checked widened numeric accumulators, `Q(empty)`).
-3. **G2:** Single-node durable MVP—one binary, 5-minute local quickstart, standard `pgwire` clients, single-node S3 durability, crash recovery, view-level fault quarantine, and monotonic lease-backed warm reads.
-4. **G3a → G3b → G4 → G6:** Table-stakes SQL (`LEFT OUTER JOIN`, `DISTINCT`, semi/anti joins, delete-safe `MIN`/`MAX`) + live PostgreSQL CDC (with benign additive-DDL tolerance) + Kafka + subscriptions (**G3a**); shared arrangements + bounded logical MVCC + rule-based isolation + eligible F-IVM (**G3b**); multi-node cloud + cache-affinity serving + optional Embedded OpenRaft low-latency profile (**G4**); production qualification & v1 migration (**G6**). `G5` advanced features graduate independently.
+Focus on a narrow, rock-solid SQL-first streaming database that maintains exact durable results, operates from one binary with zero external coordination dependencies, and delivers fast warm reads. The [implementation plan](implementation-plan.md) is the single roadmap authority; this is a summary. Build **step by step**:
+- **G0 foundation:** `G0.1` workspace/CI/oracle and `G0.4` native kernel spike unlock G1.
+- **G0 durability physics:** `G0.2` storage probe and `G0.3` Quint model run in parallel with G1 and unlock G2. The timebox bounds scope, not delivery date.
+- **G1:** Pure in-memory semantic kernel with independent PostgreSQL/batch oracle verification.
+- **G2 (developer preview):** Single-node durable MVP—one binary, 5-minute local quickstart, standard `pgwire` clients, single-node object-store durability, crash recovery, view-level fault quarantine, and warm in-process reads.
+- **G3a (first public single-node preview):** Table-stakes SQL, live PostgreSQL CDC/Kafka, and subscriptions.
+- **G3b (shared-engine preview):** Shared arrangements, independent consumer schedules with arbitrary-cut logical MVCC, rule-based isolation, and eligible F-IVM.
+- **G4 (distributed preview):** Multi-node cloud, cache-affinity serving, reader leases and grace-window GC, optional Embedded OpenRaft. `G5` advanced features graduate independently; **G6** is the production release.
 
 Engage design partners continuously from G0 onward to prioritize real query shapes and profiles without blocking G0/G1 execution.
 
@@ -55,24 +58,27 @@ Epochs 1 and 2 change both join inputs in one transaction, exercising join cross
 
 | Gate | `W1-G` progression |
 | --- | --- |
-| G0 | Frozen inputs/expected cuts, independent PostgreSQL/batch oracle, S3/SlateDB/overlay physics probe, minimal native kernel |
+| G0 foundation | Frozen inputs/expected cuts, independent PostgreSQL/batch oracle, minimal native kernel |
+| G0 durability physics | Conditional-write and storage-layout probe, concise protocol model |
 | G1 | Exact incremental operators (`COUNT`/`SUM`/`AVG`, inner joins), SQL binding, retractions, checked widened decimal/NULL laws, property tests |
-| G2 | End-to-end `pgwire`, durable local + single-node S3, bounded delta overlay, lease-backed fast reads, view quarantine, crash recovery, 5-minute quickstart |
+| G2 | End-to-end `pgwire`, durable local + single-node object store, bounded delta overlay, warm in-process reads, view quarantine, crash recovery, 5-minute quickstart |
 | G3a | Table-stakes SQL (`LEFT OUTER JOIN`, `DISTINCT`, semi/anti joins, delete-safe `MIN`/`MAX`), online lifecycle, live PG CDC (additive-DDL tolerant), Kafka, subscriptions |
 | G3b | Shared arrangements across overlapping views, independent consumer schedules, rule-based isolation, bounded single-depth pipelining, eligible F-IVM |
-| G4 | Multi-node execution, fenced failover, cache-affinity serving pools, optional Embedded OpenRaft low-latency profile |
+| G4 | Multi-node execution, fenced failover, reader leases and grace-window GC, cache-affinity serving pools, optional Embedded OpenRaft profile |
 | G6 | 72-hour soak, DR restore drills, rolling upgrades, audited SLO/cost evidence, v1 migration |
 
-## 3. Lean G0: four kill-switch deliverables (2–4 weeks)
+## 3. Lean G0: four kill-switch deliverables
 
-Do **not** build two full engines, 1,000-view benchmarks, full hibernation, or an elaborate cluster simulator in G0. Run four tightly scoped deliverables that establish the workspace and prove the existential physics:
+Do **not** build two full engines, 1,000-view benchmarks, full hibernation, or an elaborate cluster simulator in G0. The foundation track (`G0.1`, `G0.4`) unlocks G1; the durability-physics track (`G0.2`, `G0.3`) runs in parallel and unlocks G2. The 2–4 week timebox bounds the probe scope; an overrun triggers a scope cut and risk record, not a longer forecast.
 
 | Deliverable | Scope & concrete output | Exit / fallback trigger |
 | --- | --- | --- |
 | **G0.1** Bootstrap, CI & `W1-G` Oracle | Minimal Rust workspace (`Cargo.toml`, pinned toolchain), one-command local/CI fast check (<5 min), crate dependency-direction negative control, frozen `W1-G` fixture + independent PostgreSQL/batch oracle, deliberately broken cross-term negative control, and Rockstream v1 donor disposition register | Clean CI pass + proven negative controls; ready for G1 |
-| **G0.2** Storage & Metadata Physics Probe | On real S3/object storage: (a) single-key conditional `PUT` (`If-Match`) + **compositional intra-batch serialization** under single-tenant shared-quota and same-domain load (with pre-allocated owner namespaces); (b) **immutable-delta + per-domain SlateDB working index + bounded delta overlay** vs. pure SlateDB history on `W1-G` (separate-reader point lookup at `Cp` and `C ∈ [S_hot, Cp]`, exact-parent reopen after `SIGKILL`, Direct-DML PK index recovery, checkpoint amortization, nonlinear cuts, sweeper-observed grace-window GC deletion); (c) full sequential S3 freshness round trips plus warm lease-backed (`<5 ms` target) vs. strict-latest read latency | Lock **one** storage layout and record honest Object-Native latency/cost envelope; if single-key S3 latency is unacceptable for target workloads, schedule Embedded OpenRaft earlier (and note whether a cross-AZ fast WAL tier is needed for `≤100 ms` P99 freshness) |
-| **G0.3** Core Protocol Model (Quint) | One concise **Quint** spec modeling publication atomicity, pre-allocated owner-generation fencing, compositional batch outcomes (including lost CAS response after later root advance), and monotonic-lease + sweeper-observed grace-window (`Δ_gc_grace >> Δ_read_lease`) GC safety (including VM pauses), with deliberate negative controls | Zero invariant violations within bounds; all negative controls caught |
-| **G0.4** Native Kernel Spike | Acyclic scalar-epoch weighted Arrow batch kernel executing `W1-G` against the G0.1 independent oracle with explicit memory/queue bounds | Confirm native kernel ergonomics and complexity; **only** prototype Timely/Differential if native hits a concrete predeclared complexity or correctness wall |
+| **G0.2** Storage & Metadata Physics Probe | On one real provider (record storage tier): conditional-write conformance/latency and in-process group commit; **immutable-delta + per-domain SlateDB index + bounded overlay** vs. pure SlateDB history on `W1-G` (amplification, `SIGKILL` exact-parent reopen, cold recovery, overlay bound, one in-process historical point lookup); sequential freshness round trips | Lock **one** storage layout and record measurements; if conditional writes are unavailable, reject that provider/profile; if amplification is unacceptable, narrow the layout before G2. Single-zone tiers are separately named durability profiles, never the default |
+| **G0.3** Core Protocol Model (Quint) | One concise model of (1) publication atomicity with expected-parent CAS and receipt coverage, (2) ownership-generation fencing and idempotent outcomes, including lost CAS response after root advance, and (3) GC pin/retire no-resurrection with abstract minimum object age; one negative control per property | Zero invariant violations within bounds; all negative controls caught |
+| **G0.4** Native Kernel Spike | Acyclic scalar-epoch weighted Arrow batch kernel executing `W1-G` against the G0.1 independent oracle with explicit memory/queue bounds | Confirm native kernel ergonomics and complexity; a passing spike seeds P1.3, otherwise delete it; **only** prototype Timely/Differential if native hits a concrete predeclared complexity or correctness wall |
+
+Reader-lease, grace-window GC under live readers, separate-process reader, cross-AZ WAL and OpenRaft probes move to the `G4.0` entry probe. Direct-DML primary-key-index recovery is accepted in P2.1.
 
 ## 4. Start with three parallel lanes (WIP ≤ 3)
 
@@ -80,8 +86,8 @@ Start immediately after design approval with three clean, non-overlapping lanes 
 
 | Lane | First issue | Unblocks |
 | --- | --- | --- |
-| **Lane A** | **G0.1** — Minimal Rust workspace, fast CI, dependency check, and `W1-G` independent oracle | G0.4, all of G1 |
-| **Lane B** | **G0.2** — Real S3 compositional CAS + SlateDB vs. immutable-delta physics probe | Storage layout lock, all of G2 |
-| **Lane C** | **G0.3** — Quint protocol model (publication, fencing, compositional batch, grace-window GC) | Metadata/GC contracts in G2 |
+| **Lane A** | **G0.1 → G0.4** — Minimal workspace, CI and independent oracle, then native spike | G1 after both deliverables pass |
+| **Lane B** | **G0.2** — Conditional-write and storage-layout probe | G2 together with G0.3 |
+| **Lane C** | **G0.3** — Concise Quint model | G2 together with G0.2 |
 
-Close G0 as soon as **G0.1–G0.4** pass and ADRs 0003–0005 / 0011 record the measured storage/metadata/runtime choices. Then move directly into **G1** (pure semantic kernel) and **G2** (usable single-node durable MVP). Do not launch another speculative design phase.
+G1 starts when the foundation lane passes. G2 starts when the durability-physics lane passes and ADRs 0003–0005 / 0011 record the measured storage/metadata/runtime choices. Keep design-partner engagement parallel; do not make G1 wait for storage physics or launch another speculative design phase.

@@ -1,10 +1,12 @@
 # ADR 0009: bounded logical MVCC decoupled from physical checkpoints
 
-**Status:** Proposed foundational contract; physics validated in G0.2. **Date:** 2026-11-26. **Owners:** semantics, storage, runtime, and serving roles.
+**Status:** Proposed foundational contract; gate placement refined by [ADR 0012](0012-staged-mechanism-adoption.md). **Date:** 2026-11-26. **Owners:** semantics, storage, runtime, and serving roles.
 
 ## Decision
 
-Make logical MVCC a relation and arrangement contract independent of SlateDB physical sequence numbers or checkpoint IDs. A cut `C` contains input epochs `e < C`. Each history advertises:
+Make logical MVCC a relation and arrangement contract independent of SlateDB physical sequence numbers or checkpoint IDs. A cut `C` contains input epochs `e < C`. **Stage:** G2/G3a advertise latest, pinned and a bounded recent set of published versions and promise published interval-boundary cuts. Full arbitrary-cut coverage `[S_hot, Cp]` is adopted at G3b ([ADR 0012](0012-staged-mechanism-adoption.md)).
+
+Each history advertises:
 
 | Boundary | Meaning |
 | --- | --- |
@@ -26,10 +28,10 @@ Storing uncoalesced per-epoch nonlinear outputs (`DISTINCT`, `MIN`/`MAX`, outer 
 
 In one domain, eligible common cuts lie within `max(S_i) <= C <= min(Cp_i)` and every input's certified coverage. Across domains, align complete shared-source boundaries via retained lineage—never compare unrelated numeric epochs.
 
-Ordinary short reads reuse bounded reader-group/snapshot leases checked against `monotonic_now() < lease_deadline` before response flush and protected by the sweeper-observed GC physical-deletion grace window ([ADR 0003](0003-publication-and-metadata.md)); long-running historical queries and subscriptions acquire durable pins through the metadata root. Advancing `since` preserves every pinned cut and recovery dependency.
+Through G3b, ordinary reads run in the owning process under in-process pins; long-running historical queries, repeatable reads, tokens and subscriptions acquire durable pins through the metadata root. At G4, out-of-process short reads may use reader-group/snapshot leases checked against `monotonic_now() < lease_deadline` before response flush and protected by the sweeper-observed GC physical-deletion grace window ([ADR 0003](0003-publication-and-metadata.md)). The lease clock must count suspended time; a detected clock discontinuity is lease loss. Advancing `since` preserves every pinned cut and recovery dependency.
 
 ## Consequences and evidence
 
 Separating immutable delta traces from the working SlateDB index with a bounded delta overlay ([ADR 0004](0004-arrangement-storage.md)) and bounding fine-grained nonlinear history keeps LSM compaction fast while preserving exact historical point lookups and scans where needed.
 
-G0.2 validates exact cut reconstruction (including separate-reader point lookups at `Cp` and `C ∈ [S_hot, Cp]`) and nonlinear intermediate transitions on real object storage; G2 qualifies exact reads after restart; G3b qualifies independent consumer schedules and disjoint checkpoint cadences; G4 qualifies cross-domain imported lineage. The normative rules are in [consistency and storage](../design/consistency-and-storage.md).
+G0.2 compares storage layouts and exercises one in-process historical lookup at a retained earlier cut; it does not qualify arbitrary-cut MVCC. G2 qualifies published-boundary reads after restart; G3b qualifies exact arbitrary-cut reconstruction, nonlinear intermediate transitions, independent consumer schedules and disjoint checkpoint cadences; G4 qualifies leases, separate-process readers and cross-domain imported lineage. The normative rules are in [consistency and storage](../design/consistency-and-storage.md).

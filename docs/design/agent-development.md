@@ -1,12 +1,12 @@
 # Agent-first implementation and governance
 
-**Status:** Proposed engineering operating model, 2026-11-25. Autonomous coding agents are the primary implementation workforce, as directed by the project owner. No agent platform, orchestration service, permissions, agent count, delivery schedule or spend is configured by this design PR. The human maintainers remain accountable for the product and its safety. See [development workflow](development-workflow.md) and [verification architecture](testing-and-verification.md).
+**Status:** Proposed engineering operating model, 2026-11-26. Autonomous coding agents are the primary implementation workforce, as directed by the project owner. No agent platform, orchestration service, permissions, agent count, delivery schedule or spend is configured by this design PR. The human maintainers remain accountable for the product and its safety. See [development workflow](development-workflow.md) and [verification architecture](testing-and-verification.md).
 
 ## 1. Optimize for useful autonomous work
 
 Agents should ordinarily take a ready GitHub issue from planning through implementation, testing, PR, independent review feedback and integration without requiring a human conversation at every step. Human time is scarce: reserve it for priorities, contract decisions, high-risk approval, exceptions, and release authorization. Ordinary implementation details belong to agents within approved contracts.
 
-Use GitHub issues, PRs, the commit history, and versioned evidence as durable coordination state. Do not depend on a particular agent's chat history or an elaborate orchestration framework. Start with GitHub issues and PRs, isolated worktrees/branches, GitHub Actions, and versioned evidence; introduce more infrastructure only when measured bottlenecks justify it. Begin with the three parallel G0 lanes in [implementation start](../planning/implementation-start.md).
+Use GitHub issues, PRs, the commit history, and versioned evidence as durable coordination state. Do not depend on a particular agent's chat history or an elaborate orchestration framework. Start with GitHub issues and PRs, isolated worktrees/branches, GitHub Actions, and versioned evidence; introduce more infrastructure only when measured bottlenecks justify it. Follow the two G0 tracks in [implementation start](../planning/implementation-start.md): foundation (`G0.1`, `G0.4`) unlocks G1; durability physics (`G0.2`, `G0.3`) runs in parallel and unlocks G2.
 
 Keep code and documentation easy to navigate: predictable crate/module ownership, explicit types and state transitions, small coherent interfaces, concise scoped instructions where needed, and a single production execution path for each contract. A clean checkout should provide one discoverable bootstrap path and the same focused test/replay commands locally and in CI. Avoid duplicating global instructions in every directory.
 

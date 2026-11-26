@@ -1,6 +1,6 @@
 # ADR 0007: explicit public guarantees, view fault isolation, and controlled product scope
 
-**Status:** Proposed. **Date:** 2026-11-26. **Owners:** product/API, ingestion, and serving roles.
+**Status:** Proposed. **Date:** 2026-11-26. **Owners:** product/API, ingestion, and serving roles. Gate placement for read protection and logical MVCC is refined by [ADR 0012](0012-staged-mechanism-adoption.md).
 
 ## Decision
 
@@ -18,8 +18,8 @@ Source validation errors reject direct writes before durable acceptance. By defa
 
 Snapshots name exact logical cuts and protected physical roots. Read policies are explicit:
 - `latest-committed`: Linearizable authoritative head selection during the request.
-- `bounded-staleness` / `allowed-stale`: Lease-backed reads over verified immutable caches within declared staleness and authorization-revocation bounds (0 post-read S3 round-trips, enabling <5 ms warm reads).
-- `strict-immediate-revocation`: Opt-in mode performing synchronous post-read authorization revalidation at its documented remote-read latency cost.
+- `bounded-staleness` / `allowed-stale`: Through G3b, periodic root refresh bounds staleness and in-process pins protect reads; G4 out-of-process readers may use a GC-protection lease. Zero post-read S3 round-trips and sub-5 ms warm reads are unmeasured targets.
+- `strict-immediate-revocation`: G4 opt-in mode performing synchronous post-read authorization revalidation at its documented remote-read latency cost.
 - `historical` / `repeatable`: Exact retained logical cut with explicit `RESNAPSHOT_REQUIRED` or unavailable-history errors—never silent fallback to newer data.
 
 Subscriptions deliver one pinned snapshot followed by complete committed delta envelopes with resumable cursors (at-least-once network transport). Kafka delivery starts at-least-once with stable delivery IDs; stronger destination-marker protocols are separately gated.
@@ -32,8 +32,8 @@ Maintain one versioned, machine-readable capability registry across all docs and
 
 - Collapsing `durable_input` and `published` into one ambiguous `COMMIT` couples write latency to the slowest downstream view.
 - Halting an entire multi-view domain on a single derived view's arithmetic overflow creates an unacceptable operational blast radius; view-level quarantine preserves both INV-01 (no bad data published) and availability for healthy views.
-- Requiring synchronous post-read object-store checks on every read makes <5 ms warm serving physically impossible; separating lease-backed bounded-staleness reads from opt-in strict immediate revocation makes latency contracts honest.
+- Requiring synchronous post-read object-store checks on every read conflicts with the unmeasured sub-5 ms warm-read target; separating bounded-staleness reads from opt-in strict immediate revocation makes latency contracts explicit.
 
 ## Evidence
 
-G2 qualifies public read/write/quarantine/lost-response transcripts; G3 qualifies CDC handoff, subscriptions, and sink ambiguity; G4 qualifies cross-domain reads and distributed activation; G6 certifies named client versions and v1 migration. The [SQL and API contract](../reference/sql-and-apis.md) is authoritative.
+G2 qualifies public read/write/quarantine/lost-response transcripts at published interval boundaries; G3 qualifies CDC handoff, subscriptions, and sink ambiguity; G3b qualifies arbitrary-cut MVCC; G4 qualifies out-of-process reader leases, grace-window GC, cross-domain reads and distributed activation; G6 certifies named client versions and v1 migration. The [SQL and API contract](../reference/sql-and-apis.md) is authoritative.

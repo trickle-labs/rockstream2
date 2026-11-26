@@ -1,6 +1,6 @@
-# ADR 0003: compositional object metadata, lease-backed fast reads, and optional Raft tier
+# ADR 0003: compositional object metadata, staged reader leases, and optional Raft tier
 
-**Status:** Proposed default architecture; physics validated in G0.2/G0.3. **Date:** 2026-11-26. **Owners:** storage/consistency and operations roles.
+**Status:** Proposed default architecture; adoption gates refined by [ADR 0012](0012-staged-mechanism-adoption.md). **Date:** 2026-11-26. **Owners:** storage/consistency and operations roles.
 
 ## Decision
 
@@ -17,35 +17,38 @@ Start with **one logical conditional metadata root per installation** pointing i
 
 ### 2. Monotonic lease-backed fast reads and sweeper-observed GC grace windows
 
-Requiring two synchronous S3 root reads per query (pre-read selection plus post-read revalidation) makes sub-5 ms reads physically impossible and causes serving pools to hammer the metadata root. Rockstream 2 separates **logical unpinning** from **physical object deletion**:
+**Stage:** adopted at G4, the first gate with out-of-process readers. Through G2–G3b, readers run in the owning process and hold in-process pins; long-running queries, repeatable reads, tokens and subscriptions hold durable metadata pins. Physical deletion requires a committed tombstone and a configured minimum object age. `latest-committed` reads the root inline; periodic root refresh bounds warm bounded-staleness reads but is not a GC-protection lease. See [ADR 0012](0012-staged-mechanism-adoption.md).
+
+Requiring two synchronous S3 root reads per query (pre-read selection plus post-read revalidation) would be incompatible with the unmeasured sub-5 ms warm-read target and causes serving pools to hammer the metadata root. From G4, Rockstream 2 separates **logical unpinning** from **physical object deletion**:
 
 - **Sweeper-observed conservative physical-deletion grace window (`Δ_gc_grace`):** After metadata reachability marks an immutable object or checkpoint unreferenced and commits its tombstone, physical deletion waits at least `Δ_gc_grace` (default 10–15 minutes) measured on the GC sweeper's own monotonic clock after observing the committed tombstone (or verified object-store server timestamps), strictly exceeding the maximum short-query lease (`Δ_read_lease + clock_skew_bound << Δ_gc_grace`) without relying on synchronized distributed wall clocks.
-- **Monotonic-checked fast-path warm reads (0 post-read S3 round trips):** Short bounded reads holding a valid local reader-group/snapshot lease and cached authorization grant (`bounded-staleness` / `allowed-stale` policies) read directly from local/NVMe cache and the bounded delta overlay, then check `monotonic_now() < lease_deadline` *after* reading bytes and *before* flushing the response—ensuring a paused or frozen VM cannot return stale or revoked data while eliminating post-read S3 calls.
+- **Monotonic-checked fast-path warm reads (0 post-read S3 round trips):** Short bounded out-of-process reads holding a valid local reader-group/snapshot lease and cached authorization grant (`bounded-staleness` / `allowed-stale` policies) read directly from local/NVMe cache and the bounded delta overlay, then check `monotonic_now() < lease_deadline` *after* reading bytes and *before* flushing the response—ensuring a paused or frozen VM cannot return stale or revoked data while eliminating post-read S3 calls. The lease clock must count suspended time (`CLOCK_BOOTTIME` or platform equivalent); a detected discontinuity is lease loss.
 - **Strict modes remain explicit:** `latest-committed` performs a linearizable head check at selection (`<10 ms` under Embedded OpenRaft; one S3 root read under Object-Native). `strict-immediate-revocation` is an opt-in security mode that performs synchronous post-read authorization revalidation at its documented latency cost.
 - Long-running queries, repeatable transactions, and subscriptions acquire durable pins through the metadata root.
 
 ### 3. Honest dual cloud profiles (Object-Native default + optional Embedded Raft)
 
-A single S3-CAS root plus S3 Standard data segments has an honest physical latency envelope (~150 ms–1.5 s end-to-end cloud freshness across input PUT, input CAS, delta/manifest PUT, and publication CAS). Rockstream 2 defines two explicit cloud profiles running the **same logical metadata state machine**:
+A single S3-CAS root plus S3 Standard data segments is expected to have a ~150 ms–1.5 s end-to-end cloud-freshness envelope across input PUT, input CAS, delta/manifest PUT and publication CAS; this is an unmeasured hypothesis. Rockstream 2 defines two explicit cloud profiles running the **same logical metadata state machine**:
 
 | Profile | Metadata & data authority | Freshness / read envelope | Availability & suspension |
 | --- | --- | --- | --- |
-| **Object-Native (default, G2+)** | Single conditional object-store root + S3 Standard segments | ~150 ms–1.5 s end-to-end freshness (S3 P50–P99); `<5 ms` warm bounded-staleness reads; ~20–60 ms strict-latest S3 reads | Zero resident coordinator; every process/disk disposable; full zero-process hibernation for eligible workloads |
-| **Low-Latency Cloud (optional, G4+)** | Embedded [OpenRaft](https://docs.rs/openraft/0.9.21/openraft/docs/getting_started/index.html) metadata inside the Rockstream binary; S3 Standard segments (or optional separately qualified cross-AZ fast WAL tier) | `<10 ms` strict-latest reads and high-rate metadata commits; ~100–300 ms freshness on S3 Standard segments, or `≤100 ms` P99 only with the optional replicated fast WAL tier | Active voter quorum with durable voter/WAL disks required for commits; stateless maintenance/serving workers still scale to zero |
+| **Object-Native (default, G2+)** | Single conditional object-store root + S3 Standard segments | ~150 ms–1.5 s end-to-end freshness, `<5 ms` warm reads and ~20–60 ms strict-latest are unmeasured hypotheses; G2 warm bounded-staleness uses periodic root refresh and in-process pins; GC leases arrive at G4 | Zero resident coordinator; every process/disk disposable; full zero-process hibernation for eligible workloads |
+| **Low-Latency Cloud (optional, G4+)** | Embedded [OpenRaft](https://docs.rs/openraft/0.9.21/openraft/docs/getting_started/index.html) metadata inside the Rockstream binary; S3 Standard segments (or optional separately qualified cross-AZ fast WAL tier) | `<10 ms` strict-latest reads/high-rate metadata commits and ~100–300 ms freshness on S3 Standard segments are unmeasured hypotheses; `≤100 ms` P99 is a hypothesis requiring the optional replicated fast WAL tier | Active voter quorum with durable voter/WAL disks required for commits; stateless maintenance/serving workers still scale to zero |
 
-Embedded OpenRaft is compiled into the single Rockstream binary (not an external service) and implemented only in G4 (or earlier if partner workloads require `<10 ms` strict-latest reads or high-rate metadata commits). Any profile transition or replicated fast WAL tier requires its own durability, failover, and backup/restore qualification. If installation-wide throughput exceeds a single root even with compositional batching, scoped metadata partitioning is a separate G4+ ADR.
+Embedded OpenRaft is compiled into the single Rockstream binary (not an external service) and implemented only after G4.0 evidence supports the profile. Any profile transition or replicated fast WAL tier requires its own durability, failover, and backup/restore qualification. If installation-wide throughput exceeds a single root even with compositional batching, scoped metadata partitioning is a separate G4+ ADR.
 
 ## Alternatives and consequences
 
 - **Mandatory external etcd/Postgres:** Rejected; violates the single-binary zero-external-dependency product thesis.
-- **No-lease synchronous post-read S3 GET on every query:** Rejected as the default; physically precludes <5 ms warm reads and creates single-prefix S3 read storms. Retained only as an explicit `strict-immediate-revocation` opt-in.
+- **No-lease synchronous post-read S3 GET on every query:** Rejected as the default; incompatible with the unmeasured sub-5 ms warm-read target and creates single-prefix S3 read storms. Retained only as an explicit `strict-immediate-revocation` opt-in.
 - **Conflict-disjoint-only batching:** Rejected; fails under single-tenant multi-view workloads where operations share tenant quotas and `domain.input_head`. Compositional intra-batch serialization preserves exact per-operation validation while achieving high batch density.
 - **Trade-off accepted:** Grace-window GC retains deleted immutable bytes for an extra 5–15 minutes (negligible cloud storage cost in exchange for eliminating post-read S3 GETs). Bounded-staleness auth caching accepts a configurable revocation propagation delay (seconds) unless the caller requests strict immediate revocation.
 
 ## Gate
 
-- **G0.2:** Benchmark single-key S3 conditional `PUT` + compositional batching (including single-tenant shared-quota and same-domain writes) and measure warm lease-backed vs. strict-latest read latencies on real object storage.
-- **G0.3:** Model publication, ownership fencing, compositional batch outcomes, and grace-window lease/GC safety in **Quint** with deliberate negative controls.
-- **G2/G4:** Real-process crash recovery, ambiguous CAS response recovery, and (G4) distributed contention and optional OpenRaft profile qualification.
+- **G0.2:** Measure conditional-write behavior/latency, in-process group commit and sequential freshness round trips on one real provider.
+- **G0.3:** Model publication, ownership fencing, idempotent operation outcomes and abstract GC pin/retire reachability in **Quint** with deliberate negative controls.
+- **G4.0:** Probe separate-process readers, lease/grace GC under live readers, suspend-aware clock behavior, distributed contention and evidence for optional OpenRaft/fast WAL. Real deletion and lease-model extensions are gated here.
+- **G2:** Qualify in-process pins, bounded-staleness refresh, exact recovery and durable pins; do not require reader leases.
 
 The normative state machine and backend requirements are in [consistency and storage](../design/consistency-and-storage.md).
