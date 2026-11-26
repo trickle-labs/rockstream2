@@ -84,6 +84,8 @@ def slate_recovery(binary):
     mutant = recover("split-bad", "takeover-bad")
     if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
         raise AssertionError(f"dirty-instance negative control was not detected: {mutant.stderr!r}")
+    comparison = recover("w1g", "w1g")
+    expect((comparison.returncode, comparison.stdout), (0, b"W1G-COMPARED\n"), f"W1-G layouts: {comparison.stderr!r}")
 
 
 def main():

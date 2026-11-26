@@ -43,8 +43,17 @@ control that reuses the dirty instance fails. This tests one interval and one
 writer; it does not exercise competing ownership or recovery from a registered
 checkpoint.
 
+The optional Rust probe also consumes the G0.1 `fixtures/w1g` transactions,
+expected cuts and independent `w1g-oracle`. At each cut it batch-recomputes the
+join separately, verifies both oracle and frozen result, stores changed output
+rows in immutable objects with a capped overlay over a checkpointed SlateDB
+index, and stores per-cut keyed snapshots in a second SlateDB instance. It
+checks both layouts at each cut and a retained cut-2 read. The second path is
+an exploratory keyed-history representation, not a qualified pure-SlateDB
+history implementation. No request amplification or cost is measured here.
+
 This smoke test is **not G0.2 qualification**: it does not exercise a real
-provider, ambiguous responses, group commit, W1-G, both SlateDB layouts,
+provider, ambiguous responses, group commit, a full comparison of both storage layouts,
 general mid-apply recovery, checkpoint-based recovery or an integrated serving
 overlay. It cannot select a storage
 layout or establish cloud latency, cost, or durability. Apply the predeclared

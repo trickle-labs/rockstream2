@@ -47,6 +47,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .with_allow_http(true)
             .build()?,
     );
+    if mode == "w1g" {
+        return w1g::run(store).await;
+    }
     let root = Path::from(format!("{prefix}/root"));
     if mode == "publish" || mode == "publish-corrupt" {
         store
@@ -184,3 +187,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
+mod w1g;

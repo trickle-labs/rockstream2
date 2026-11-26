@@ -9,3 +9,4 @@ edition = "2021"
 slatedb = { version = "=0.17.0", features = ["aws"] }
 sha2 = "=0.10.9"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+w1g-oracle = { path = "../../../crates/w1g-oracle" }
