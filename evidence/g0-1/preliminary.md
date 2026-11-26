@@ -16,9 +16,11 @@ head commit itself. Its merge message identifies those head and base commits.
 [CI run 45896494117](https://github.com/trickle-labs/rockstream2/actions/runs/45896494117)
 and its [fast job and raw log](https://github.com/trickle-labs/rockstream2/actions/runs/45896494117/job/140171567253)
 are the hosted observations. A copy of the `Run fast checks` step is retained as
-[ci-run-45896494117-fast.log](ci-run-45896494117-fast.log), SHA-256
+[ci-run-45896494117-fast.log.gz](ci-run-45896494117-fast.log.gz). The gzip
+SHA-256 is `63628efb96b301eea809e2b5a64d43df00baaab2bef7386206d9fff8c19a2153`;
+its uncompressed bytes have SHA-256
 `b2c705acb45ff83b34f87326dab825787a7221b6096a23456e201a833dc6e287`.
-It was filtered from the hosted log to that one step, with the `PGPASSWORD`
+The extract was filtered from the hosted log to that one step, with the `PGPASSWORD`
 environment line removed; it is a redacted extract, not a byte-for-byte copy
 of the full job log. GitHub retention of the original is not established.
 
