@@ -1,44 +1,35 @@
-# ADR 0009: logical MVCC for shared incremental state
+# ADR 0009: bounded logical MVCC decoupled from physical checkpoints
 
-**Status:** Proposed foundational contract; storage/runtime qualification unexecuted. **Date:** 2026-11-25. **Owners:** semantics, storage, runtime and serving roles.
-
-## Context
-
-Views need different freshness and maintenance schedules. A shared producer should be able to advance for a fast consumer while a slower consumer reads an older consistent state. Aligning physical checkpoints alone is too restrictive, and reading independent latest values can mix source transactions.
+**Status:** Proposed foundational contract; physics validated in G0.2. **Date:** 2026-11-26. **Owners:** semantics, storage, runtime, and serving roles.
 
 ## Decision
 
-Make logical MVCC a relation and arrangement contract, independent of SlateDB physical sequence numbers or checkpoint IDs. It supports consistent reads, shared maintenance, view builds/replacements and recovery obligations. It does not by itself provide general OLTP isolation, distributed atomic writes or correct publication.
-
-A cut `C` contains input epochs `e < C`. Each history advertises:
+Make logical MVCC a relation and arrangement contract independent of SlateDB physical sequence numbers or checkpoint IDs. A cut `C` contains input epochs `e < C`. Each history advertises:
 
 | Boundary | Meaning |
 | --- | --- |
-| Computed upper `Cc` | Completion of computation, which may still be volatile |
-| Durable published upper `Cp` | Certified durable completion; `Cp <= Cc` |
+| Computed upper `Cc` | Completed evaluation (may still be volatile) |
+| Durable published upper `Cp` | Certified durable publication; `Cp <= Cc` |
 | Inclusive `since = S` | Earliest supported logical cut |
-| Cut coverage | Exact supported cuts, normally every `S <= C <= Cp`; explicit gaps remain unavailable |
+| Cut coverage | Exact supported cuts: fine-grained in `[S_hot, Cp]` plus named periodic checkpoint cuts in `[S, S_hot)` |
 
-Genesis is cut zero with output `Q(empty)`. A write at epoch `e` is visible only when `Cp > e` and its dependency checks pass. Counters and source incarnations never wrap into reused authority.
+Genesis is cut zero with output `Q(empty)`. Counters and source incarnations never wrap into reused authority.
 
-A protected base `R(S)` plus timestamped output deltas for `S <= e < Cp` can reconstruct `R(C)`. Every advertised cut also has a protected, possibly compressed mapping to its source positions/incarnations, transaction/import dependency closure and applicable schema/semantics. Physical checkpoints or registered immutable references protect these bytes; a checkpoint may serve many logical cuts. Recovery retains any additional operator state or exact recipe required at the operator's published boundary.
+### Practical bounded retention granularity
 
-Separate current-state access, logical history and physical checkpoint cadence. A committed current-state index can avoid replaying extensive history for common probes/joins; it may be a reconstructible cache only with a complete protected recovery recipe and measured rebuild/catch-up bounds. Retain required operator recovery state initially; output history alone does not establish that recipe. Periodic consolidated bases bound historical reconstruction. Their creation is driven by explicit read amplification, retained-byte, compaction/request and recovery budgets, not by treating each logical epoch as a distinct physical database snapshot. New bases do not authorize dropping older promised cuts. [ADR 0004](0004-arrangement-storage.md) compares SlateDB-backed history with immutable bases/deltas alongside SlateDB indexes under this same logical contract.
+Storing uncoalesced per-epoch nonlinear outputs (`DISTINCT`, `MIN`/`MAX`, outer joins) for days on high-churn keys inside an LSM tree causes unbounded version explosion. Rockstream 2 therefore makes history granularity explicit and bounded:
+- **Hot fine-grained window (`[S_hot, Cp]`):** Preserves exact per-epoch immutable delta segments (including nonlinear intermediate transitions) for active pins, short historical queries, consumer catch-up, and cross-domain cut alignment—without requiring aligned physical checkpoints.
+- **Longer retention (`[S, S_hot)`):** Uses periodic consolidated checkpoint bases (or explicitly budgeted immutable delta archives) rather than promising unbounded millisecond-granularity nonlinear history inside the working SlateDB index.
+- Every advertised cut carries a protected mapping to its source positions, transaction/import dependency closure, and schema/semantic version. Missing or expired cuts always fail explicitly (`RESNAPSHOT_REQUIRED` or unavailable-history error), never silently returning newer data.
 
-Preserve results at **every promised cut**, including nonlinear intermediate results. For example, inserting a distinct value at epoch 10 and deleting it at 11 leaves no value at cut 12, but the value exists at cut 11. Consolidating only the endpoint difference loses that snapshot. The baseline processes complete epochs and retains their output history; coarser algorithms need a proof or an explicitly narrower supported-cut contract. Retained input alone does not certify immediate historical query support.
+### Cut selection and lease-backed protection
 
-Each consumer has a durable cursor, freshness/scheduling policy, retained cut/replay obligation and independent history, maintenance and recovery budgets. Producers can advance without making all consumers publish together. Each result domain still has one atomic publication group. Sharing is optional: admit extra capacity, isolate a consumer through pinned replay and atomic retention handoff, or apply an explicitly declared expiry/resnapshot policy when cost exceeds its contract. Never silently erase required history or revoke another consumer's protection to meet a budget.
+In one domain, eligible common cuts lie within `max(S_i) <= C <= min(Cp_i)` and every input's certified coverage. Across domains, align complete shared-source boundaries via retained lineage—never compare unrelated numeric epochs.
 
-## Cut selection and retention
-
-In one time domain, candidate cuts lie within `max(S_i) <= C <= min(Cp_i)` and every input's certified coverage. Select an eligible cut and its exact physical roots under durable protection, either atomically acquiring a pin or using the qualified [reader-group protocol](../design/consistency-and-storage.md#81-amortized-reader-protection). Latest selection remains linearizable even when protection is reused. Across domains, align complete shared-source boundaries through retained lineage and causal/transaction closure; never compare unrelated epoch numbers.
-
-A consumer whose physical checkpoint ends at 80 and another whose checkpoint ends at 70 may both reconstruct cut 60 without either having checkpointed at 60. This is valid only if their histories and lineage certify that cut. A missing cut causes a wait, explicit rebuild or error.
-
-Advancing `since` preserves all remaining advertised snapshots, source mappings and recovery dependencies. Physical replacement and logical retirement are coordinated with durable pins and GC through the metadata root. Expiry of a policy or process does not authorize a backend cleaner to bypass those roots. Completed reads require valid pin authorization.
+Ordinary short reads reuse bounded reader-group/snapshot leases protected by the conservative GC physical-deletion grace window ([ADR 0003](0003-publication-and-metadata.md)); long-running historical queries and subscriptions acquire durable pins through the metadata root. Advancing `since` preserves every pinned cut and recovery dependency.
 
 ## Consequences and evidence
 
-MVCC trades synchronization for retained data, history-aware probes, compaction and metadata cost. It does not eliminate actual dependencies, shared hot spots, publication-group barriers or common metadata contention.
+Separating immutable delta traces from the working SlateDB index ([ADR 0004](0004-arrangement-storage.md)) and bounding fine-grained nonlinear history keeps LSM compaction fast while preserving exact historical cuts where needed.
 
-G0 falsifies cut reconstruction and nonlinear history preservation over SlateDB. G2 qualifies exact reads after restart; G3 covers independent local consumer schedules, slow-consumer budgets and disjoint checkpoint cadence; G4 qualifies general imported lineage and distributed pin/reassignment races. The normative conventions, reconstruction formula and GC rules are in [consistency and storage](../design/consistency-and-storage.md).
+G0.2 validates exact cut reconstruction and nonlinear intermediate transitions on real object storage; G2 qualifies exact reads after restart; G3 qualifies independent consumer schedules and disjoint checkpoint cadences; G4 qualifies cross-domain imported lineage. The normative rules are in [consistency and storage](../design/consistency-and-storage.md).

@@ -1,43 +1,51 @@
-# ADR 0003: atomic metadata on object storage without an external service
+# ADR 0003: compositional object metadata, lease-backed fast reads, and optional Raft tier
 
-**Status:** Proposed default architecture; substrate and costs require G0 evidence. **Date:** 2026-11-25. **Owners:** storage/consistency and operations roles.
+**Status:** Proposed default architecture; physics validated in G0.2/G0.3. **Date:** 2026-11-26. **Owners:** storage/consistency and operations roles.
 
 ## Decision
 
-Keep all authoritative cloud data **and metadata** in a qualified object store. The metadata kernel is part of the Rockstream binary. No external etcd, ZooKeeper, Redis, SQL catalog or continuously running metadata tier is required.
+Keep all authoritative cloud data **and metadata** in a qualified object store in the default **Object-Native** profile. The metadata kernel is an in-process library—no external etcd, ZooKeeper, Redis, SQL catalog, or continuously running external metadata cluster is required.
 
-Start with one logical conditional metadata root per installation, pointing into immutable metadata pages. It selects the catalog, input/publication heads, deduplication state, ownership generations, pins, intents and lifecycle together. Prepare durable data and metadata pages first, then conditionally replace the expected root revision. That root transition is the logical transaction's linearization point. A single-object conditional update does not make separately written metadata objects atomic: all predicates and changes requiring atomicity must be covered by the same selected root.
+### 1. Single conditional root with compositional intra-batch serialization
 
-Publication checks the expected parent, run, catalog/plan revision, ownership generation, authorized publisher and sealed intent. The sealed receipt tree must cover the complete fixed participant set. The final update contains a bounded root, not an unbounded receipt list. Completeness validation remains trusted, tested code; a digest alone does not establish it.
+Start with **one logical conditional metadata root per installation** pointing into immutable metadata pages (catalog, domain heads, ownership generations, pins, quotas, intents, and operation outcomes). Use single-key conditional `PUT` (`If-Match` / `If-None-Match`) as the primary primitive on S3-compatible object stores; evaluate [`slatedb-txn-obj` 0.17.0](https://docs.rs/slatedb-txn-obj/0.17.0/slatedb_txn_obj/) only if its current-version discovery avoids `ListObjects` on the read path.
 
-Input acceptance separately commits its head, admission/deduplication state and protected recovery references. They remain live roots even with zero views. Pin creation and eligibility, pin renewal/revocation, and retirement also use atomic root transitions. Unknown outcomes resolve through stable operation identities. CAS conflicts require refresh and revalidation of every predicate.
+An embedded bounded commit scheduler batches concurrent metadata mutations into one conditional root transition (`R → R+1`):
+- Instead of rejecting any two operations that touch the same tenant quota, domain head, or pin set, the committer applies queued operations **sequentially in memory against a working tree derived from `R`**, validating each operation's exact preconditions against the in-batch state, then writes the resulting immutable tree pages and commits one CAS.
+- Every admitted operation records its own stable identity and durable outcome inside the committed tree so lost responses and regrouped retries resolve idempotently without duplicating effects.
+- A disposable preferred committer minimizes competing CAS storms in distributed deployments without holding independent authority.
 
-Make amortization an early requirement. An embedded adaptive commit scheduler uses bounded priority queues, fairness, a maximum commit delay and conflict-aware batching. Initially batch only operations whose writes preserve every other operation's predicates/read/write footprint, all validated against one authoritative revision. Commit individual stable identities and outcomes together so lost responses, partial retries and regrouping cannot duplicate effects. A preferred active committer is disposable and holds no independent authority. The [scheduler contract](../design/consistency-and-storage.md#421-bounded-metadata-commit-scheduler) defines bounds, ambiguity and overload behavior.
+### 2. Lease-backed fast reads and conservative GC deletion grace windows
 
-Ordinary reads may share durable protection for a bounded set of exact snapshots under the [reader-group protocol](../design/consistency-and-storage.md#81-amortized-reader-protection). Registration and drain use one local admission gate; durable generations fence release and revocation; current authorization and final completion remain authoritative checks. Group protection removes per-query pin writes only for covered snapshots. Latest committed reads still require a linearizable selection point; a cached head provides only explicitly requested stale semantics. Portable tokens need dedicated protection or a qualified handoff. No TTL or local reference count alone authorizes GC.
+Requiring two synchronous S3 root reads per query (pre-read selection plus post-read revalidation) makes sub-5 ms reads physically impossible and causes serving pools to hammer the metadata root. Rockstream 2 separates **logical unpinning** from **physical object deletion**:
 
-Evaluate reuse of [`slatedb-txn-obj` 0.17.0](https://docs.rs/slatedb-txn-obj/0.17.0/slatedb_txn_obj/) for the **single-object** primitive. Its transactional register, versioned-object protocol and optional epoch fence do not supply Rockstream's multi-record state machine, lease or GC semantics. Qualify the actual read, conditional-write, current-version discovery, ambiguity and reclamation protocol for each supported object service. [S3 conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html) are a concrete substrate reference, not a guarantee for every S3-compatible service.
+- **Conservative physical-deletion grace window (`Δ_gc_grace`):** After metadata reachability marks an immutable object or checkpoint unreferenced, physical deletion waits for a conservative grace window (e.g., 5–15 minutes) that strictly exceeds the maximum short-query lease (`Δ_read_lease + clock_skew_bound << Δ_gc_grace`).
+- **Fast-path warm reads (0 post-read S3 round-trips):** Short bounded reads holding a valid reader-group/snapshot lease and cached authorization grant (`bounded-staleness` / `allowed-stale` policies) serve directly from local/NVMe cache with **zero synchronous S3 metadata calls at query completion**, making sub-5 ms P99 warm reads achievable and insulating `allowed-stale` serving from brief metadata blips.
+- **Strict modes remain explicit:** `latest-committed` performs a linearizable head check at selection (one authoritative root read under Object-Native; local/quorum read under Embedded Raft). `strict-immediate-revocation` is an opt-in security mode that performs synchronous post-read authorization revalidation at its documented latency cost.
+- Long-running queries, repeatable transactions, and subscriptions acquire durable pins through the metadata root.
 
-The embedded profile runs the same logical transitions through a qualified local filesystem adapter with exclusive process ownership and durable acknowledged root updates. Compiled implementation libraries are permitted; they add no separately operated service.
+### 3. Honest dual cloud profiles (Object-Native default + optional Embedded Raft)
+
+A single S3-CAS root has a physical latency floor (~200 ms–1 s end-to-end cloud freshness depending on S3 conditional PUT latency). Rather than claiming ≤100 ms cloud freshness on an unverified S3 CAS path, Rockstream 2 defines two explicit cloud profiles implementing the **same logical metadata state machine**:
+
+| Profile | Metadata authority | Freshness / read envelope | Availability & suspension |
+| --- | --- | --- | --- |
+| **Object-Native (default, G2+)** | Single conditional object-store root | ~200 ms–1 s freshness; <5 ms warm bounded-staleness reads; ~20–60 ms strict-latest S3 reads | Zero resident coordinator; full zero-process hibernation for eligible workloads |
+| **Low-Latency Cloud (optional, G4+)** | Embedded [OpenRaft](https://docs.rs/openraft/0.9.21/openraft/docs/getting_started/index.html) library inside the same Rockstream binary | Targets ≤100 ms freshness and high-rate strict-latest reads | Requires an active voter quorum for commits; stateless maintenance/serving workers still scale to zero |
+
+Embedded OpenRaft is implemented only in G4 (or earlier only if partner workloads require ≤100 ms cloud freshness). If installation-wide throughput exceeds a single root even with compositional batching, scoped metadata partitioning (with modeled cross-root import/retention handoff) is a separate G4+ ADR.
 
 ## Alternatives and consequences
 
-A mandatory etcd or external SQL deployment contradicts the operating requirement. Direct last-writer-wins object updates do not provide fencing. Splitting one root into independent keys prematurely would reintroduce atomicity gaps.
-
-The single root serializes metadata commits and adds object-service latency, contention and tree-write amplification. Keep roots small and measure aggregate ingestion, publication, pin churn, authoritative read validation and lifecycle operations, including full metadata-tree cost. Computationally independent groups still share this metadata bottleneck; throughput is not assumed unlimited.
-
-The [read envelope](../design/consistency-and-storage.md#82-read-latency-and-availability-envelope) applies to cached, explicitly stale and pinned reads as well as strict latest reads. All require current protection/authorization checks; metadata unavailability prevents successful completion even when data is cached. P0.4 must measure each policy's complete critical path and validate this outage behavior. Amortizing pin writes does not establish a 5 ms read guarantee or authorize a weaker revocation contract.
-
-Expose logical transaction scopes and their complete predicates while mapping all scopes to the initial root. P0.4 records their dependency map before implementation: publication and input heads, catalog/schema revisions, authorization and revocation, quota predicates, physical writer fences, pins/intents, GC, backup and restore incarnation. A result domain or tenant label alone does not establish an independent authority boundary. Keep coupled decisions under one root until a replacement protocol is qualified.
-
-Independent installations with disjoint authority and retention obligations are the simplest isolation option for genuinely independent workloads. Evaluate their resource/request overhead when the workload permits it; this is no evidence for cross-root sharing or atomic administration. If batching/amortization cannot meet aggregate throughput within one installation, evaluate dependency-closed partitioning. It requires a separate modeled protocol for protected imports, durable references, retention handoff and every remaining cross-root predicate; independent CAS operations cannot replace atomic publication/fence/pin decisions. Preserve this option without implementing a general partitioned metadata service in G0. More roots can reduce contention but do not remove mandatory remote selection and completion latency.
-
-A mature embedded Raft library such as [OpenRaft](https://docs.rs/openraft/0.9.21/openraft/docs/getting_started/index.html) is an evidence-triggered alternative if the baseline cannot meet a material requirement economically. It still requires durable votes/logs/snapshots, networking, membership, restore and an available quorum for new decisions. Adoption needs a new ADR and a migration/hibernation contract; it is not a transparent configuration switch or permission to create a separate mandatory service.
-
-Both profiles implement the same logical metadata state machine. Object-native remains the default, with protected object state and no active quorum required during eligible full suspension. Embedded consensus targets demonstrated coordination-latency needs and has distinct durable-state, linearizable-read, quorum and stop/restart obligations. Do not assume its hibernation contract matches the object-native profile or that an embedded library by itself qualifies either profile.
+- **Mandatory external etcd/Postgres:** Rejected; violates the single-binary zero-external-dependency product thesis.
+- **No-lease synchronous post-read S3 GET on every query:** Rejected as the default; physically precludes <5 ms warm reads and creates single-prefix S3 read storms. Retained only as an explicit `strict-immediate-revocation` opt-in.
+- **Conflict-disjoint-only batching:** Rejected; fails under single-tenant multi-view workloads where operations share tenant quotas and `domain.input_head`. Compositional intra-batch serialization preserves exact per-operation validation while achieving high batch density.
+- **Trade-off accepted:** Grace-window GC retains deleted immutable bytes for an extra 5–15 minutes (negligible cloud storage cost in exchange for eliminating post-read S3 GETs). Bounded-staleness auth caching accepts a configurable revocation propagation delay (seconds) unless the caller requests strict immediate revocation.
 
 ## Gate
 
-G0 P0.4 models publication, admission, ownership, conflict-aware batches, per-operation ambiguous outcomes, metadata-page reachability and reader registration/drain/revocation/GC races; injects lost CAS responses, committer death and concurrent bootstrap/activation; and measures target metadata traffic with and without batching/group protection. Freeze acceptance limits and fallback decisions through [G0 feasibility decisions](../planning/qualification.md#g0-feasibility-decisions). G2 proves loss of every cloud process/local file and recovery from protected object roots. G3 adds shared history and consumer pin pressure; G4 adds distributed contention, partitions and stale-owner resurrection. No gate has run.
+- **G0.2:** Benchmark single-key S3 conditional `PUT` + compositional batching (including single-tenant shared-quota and same-domain writes) and measure warm lease-backed vs. strict-latest read latencies on real object storage.
+- **G0.3:** Model publication, ownership fencing, compositional batch outcomes, and grace-window lease/GC safety in **Quint** with deliberate negative controls.
+- **G2/G4:** Real-process crash recovery, ambiguous CAS response recovery, and (G4) distributed contention and optional OpenRaft profile qualification.
 
 The normative state machine and backend requirements are in [consistency and storage](../design/consistency-and-storage.md).

@@ -26,21 +26,20 @@ DBSP provides a compositional framework for expressing integration, differentiat
 
 A logical cut `C` includes exactly epochs `e < C`; the equations above use an after-epoch snapshot, so `R_e` corresponds to cut `e + 1`. A published exclusive upper `Cp = 28` includes epoch 27. The computed upper `Cc` certifies completed evaluation; the published upper `Cp <= Cc` additionally certifies protected durable state and an authoritative publication. An operator's computation frontier is not a durability acknowledgement. Domain-local epochs from different domains cannot be compared. A `SourceCut` describes the complete native source positions and imported relation versions represented by a snapshot; it is not a global clock.
 
-An input transaction supplies an atomic set of changes. Intermediate retractions, transient negative counts, and intermediate join results are invisible until the whole epoch has been evaluated and published. Direct-write validation must reject an invalid transaction before durable acceptance. If a valid durably accepted input later makes a derived view exceed a resource or arithmetic limit, that view/domain stops publication with an explicit error; the accepted source transaction cannot be silently rolled back or skipped. Admission and safe numeric limits should make this exceptional, but recovery must preserve the distinction.
+An input transaction supplies an atomic set of changes. Intermediate retractions, transient negative counts, and intermediate join results are invisible until the whole epoch has been evaluated and published. Direct-write validation rejects invalid transactions before durable acceptance. If a valid, durably accepted input later causes a derived view to hit a runtime arithmetic or resource error (such as `DECIMAL` overflow or division by zero), the engine **quarantines that failing view** at its last valid published cut with an explicit `ERROR` diagnostic, allowing unaffected views to continue advancing. Views explicitly declared as a coupled atomic publication group halt together as the documented cost of joint atomicity. Accepted source transactions are never silently rolled back or skipped; repair replaces or alters the failing view and backfills cleanly.
 
-### Logical MVCC and batching
+### Logical MVCC and bounded batching
 
-Maintained relations and shared arrangements expose retained logical cuts independently of the backend's physical versions. Let `S` be the inclusive earliest reconstructible cut. A complete retained range `[S, Cp]` is supported by an exact base `R@S` and sufficient timestamped changes:
+Maintained relations and shared arrangements expose retained logical cuts independently of physical checkpoints. Let `S` be the inclusive earliest supported cut and `S_hot` the earliest fine-grained cut (`S <= S_hot <= Cp`):
+- In the **hot fine-grained window `[S_hot, Cp]`**, exact immutable delta segments support every logical cut `C` (including intermediate nonlinear results for `DISTINCT`, `MIN`/`MAX`, and outer joins):
 
 ```text
-R@C = R@S + Σ_(S <= e < C) ΔR_e, for S <= C <= Cp
+R@C = R@S_hot + Σ_(S_hot <= e < C) ΔR_e, for S_hot <= C <= Cp
 ```
 
-Empty changes still carry progress and lineage. A published descriptor declares coverage and any gaps; inputs merely being replayable does not make an uncomputed historical result immediately queryable. A physical checkpoint can protect several logical cuts, and checkpoints for different relations need not occur at identical cuts. A read chooses compatible covered cuts and pins their backing state through the [storage contract](consistency-and-storage.md). Advancing `S` requires the retention protocol to release every older obligation.
+- In **longer retention `[S, S_hot)`**, periodic consolidated checkpoint bases (or explicitly budgeted archived deltas) bound state growth so hot keys do not accumulate unbounded uncoalesced per-epoch versions inside an LSM tree.
 
-This permits different consumers of one arrangement to run at different cadences. It does not permit dropping time information that a consumer still needs. Consolidate equal `(row, epoch)` changes freely under the numeric contract; consolidate across epochs only when exact reconstruction of every advertised cut and every retained downstream input boundary survives. For example, insertion at epoch 10 and deletion at epoch 11 have net zero effect at cut 12, but the row exists at cut 11. Their combined zero cannot answer both cuts.
-
-For nonlinear operators, preserve sufficient per-epoch state/output to derive `Q(R@C)` at each advertised cut. Computing `DISTINCT`, an outer join, or `MIN` only at the end of a batch does not recover its intermediate answers from the batch's net input delta. A scheduler may evaluate complete epochs together, but skipping historical outputs requires an explicit narrower coverage contract or a qualified reconstruction plan. Subscriptions and downstream consumers cannot be told that skipped cuts were maintained.
+Empty changes still carry progress and lineage. A published descriptor declares exact coverage; missing or expired cuts always return explicit errors rather than falling back to newer data. Consolidating across epochs is legal only below `S_hot` when no active pin or promised intermediate cut requires them.
 
 ## 2. SQL meaning belongs to Rockstream
 

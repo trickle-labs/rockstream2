@@ -1,25 +1,39 @@
-# ADR 0007: explicit public guarantees and a controlled product scope
+# ADR 0007: explicit public guarantees, view fault isolation, and controlled product scope
 
-**Status:** Proposed. **Date:** 2026-11-25. **Owners:** product/API, ingestion and serving roles.
+**Status:** Proposed. **Date:** 2026-11-26. **Owners:** product/API, ingestion, and serving roles.
 
 ## Decision
 
-Expose two acknowledgements: durable input with a stable write token, and publication of named catalog-pinned dependencies with a snapshot token. A publication wait timing out does not undo input. Sessions retain relevant per-domain write tokens for read-your-writes.
+Expose two distinct acknowledgements: `durable_input` (with a stable `WriteToken`) and `published` for named catalog-pinned dependencies (with a `SnapshotToken`). A publication wait timeout never rolls back accepted input. Sessions carry relevant per-domain write tokens for read-your-writes.
 
-G2 direct writes are bounded same-domain keyed transactions with serialized admission against accepted state, including accepted but unpublished writes. SELECT in a write transaction and cross-domain atomic writes are initially rejected. pgwire compatibility does not imply every PostgreSQL isolation, extension or client-retry behavior. Registered request identities are required for safe unknown-outcome retries; ordinary clients must reconcile a lost COMMIT result.
+### Bounded direct writes with explicit index accounting
 
-Snapshots name exact logical cuts and protected physical history roots. Latest committed resolves authoritative heads; allowed-stale is a separate explicit policy. Logical history can support a cut without a matching physical checkpoint, but missing or uncertified history never silently falls back. Subscriptions send one initial snapshot and complete committed delta envelopes with resumable cursors; unacknowledged transport can repeat. Kafka delivery starts at-least-once with stable IDs. An exactly-once claim requires a qualified destination-visible marker/transaction recovery protocol, not merely an idempotent producer. Schema changes, expired history, invalid tokens and unavailable compatible cuts return explicit errors.
+G2 direct writes support bounded same-domain transactions (`INSERT`, plus primary-key `UPDATE`/`DELETE` on keyed tables). Keyed direct-DML tables maintain an **explicitly budgeted durable primary-key image index** (using the same SlateDB storage layer) to normalize retractions against the accepted-input head; append-only tables and PostgreSQL CDC sources carrying full before-images avoid that index entirely. `SELECT` inside a write transaction and cross-domain atomic writes are rejected initially. Registered `(client_id, signed_client_generation, sequence)` identities are required for safe unknown-outcome retries; ordinary `pgwire` clients reconcile lost `COMMIT` responses.
 
-Present a SQL-first streaming database; workload-centric computation and sharing are internal execution choices. Expose maintenance policy, freshness, retained history and sleep eligibility in database terms. Full suspension requires a documented activation path and qualified source/timer/delivery retention, with visible cold-start costs; it does not promise a listening endpoint while every process is stopped.
+### View-level fault isolation for runtime evaluation errors
 
-Maintain a capability registry distinguishing Planned, Experimental and Qualified behavior. Initial external integration growth is limited to PostgreSQL CDC, Kafka and pgwire; Arrow Flight SQL and richer SQL arrive through separate gates. Maintained time uses a durable clock input when promoted; ordinary `NOW()` is not silently reevaluated against wall time.
+Source validation errors reject direct writes before durable acceptance. If a valid, durably accepted transaction triggers a runtime evaluation error in one derived view (for example, `DECIMAL` overflow or division by zero), the engine **quarantines that failing view** at its last valid published cut with an explicit `ERROR` status and actionable diagnostic, while unaffected views continue advancing. Views explicitly joined in a coupled atomic publication group halt together as the documented cost of joint atomicity. Repair replaces or alters the failing view and backfills cleanly—accepted input is never silently skipped.
+
+### Honest read policies and delivery guarantees
+
+Snapshots name exact logical cuts and protected physical roots. Read policies are explicit:
+- `latest-committed`: Linearizable authoritative head selection during the request.
+- `bounded-staleness` / `allowed-stale`: Lease-backed reads over verified immutable caches within declared staleness and authorization-revocation bounds (0 post-read S3 round-trips, enabling <5 ms warm reads).
+- `strict-immediate-revocation`: Opt-in mode performing synchronous post-read authorization revalidation at its documented remote-read latency cost.
+- `historical` / `repeatable`: Exact retained logical cut with explicit `RESNAPSHOT_REQUIRED` or unavailable-history errors—never silent fallback to newer data.
+
+Subscriptions deliver one pinned snapshot followed by complete committed delta envelopes with resumable cursors (at-least-once network transport). Kafka delivery starts at-least-once with stable delivery IDs; stronger destination-marker protocols are separately gated.
+
+### Unified five-stage capability registry
+
+Maintain one versioned, machine-readable capability registry across all docs and tooling using the five-stage lifecycle: **`Planned → Implemented → Verified → Qualified → Supported`**. Initial external integrations are scoped to PostgreSQL CDC, Kafka, and `pgwire`; Arrow Flight SQL and broader SQL features advance through independent G5 gates.
 
 ## Alternatives and consequences
 
-One ambiguous “committed” response is easier to describe but obscures the central freshness/durability distinction. Always waiting for all views makes unrelated slow consumers an implicit write dependency. Unconditional external exactly-once claims would exceed the protocols' capabilities. Complete PostgreSQL compatibility would delay the core product and complicate admission/locking semantics.
-
-Applications must understand the chosen acknowledgement and expiry rules. The first release will reject some queries the original engine supports; migration does not occur until that workload's required feature set is qualified. Clear errors and capability documentation are part of the product rather than an excuse for a silent fallback.
+- Collapsing `durable_input` and `published` into one ambiguous `COMMIT` couples write latency to the slowest downstream view.
+- Halting an entire multi-view domain on a single derived view's arithmetic overflow creates an unacceptable operational blast radius; view-level quarantine preserves both INV-01 (no bad data published) and availability for healthy views.
+- Requiring synchronous post-read object-store checks on every read makes <5 ms warm serving physically impossible; separating lease-backed bounded-staleness reads from opt-in strict immediate revocation makes latency contracts honest.
 
 ## Evidence
 
-G2 proves public read/write/cancellation/lost-response transcripts. G3 proves source handoff, subscriptions and sink ambiguity. G3 qualifies local independent consumer groups and G4 compatible general cross-domain reads and distributed activation. G6 certifies named client versions and migration behavior. The [SQL/API specification](../reference/sql-and-apis.md) is authoritative for this contract.
+G2 qualifies public read/write/quarantine/lost-response transcripts; G3 qualifies CDC handoff, subscriptions, and sink ambiguity; G4 qualifies cross-domain reads and distributed activation; G6 certifies named client versions and v1 migration. The [SQL and API contract](../reference/sql-and-apis.md) is authoritative.
