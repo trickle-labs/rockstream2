@@ -35,3 +35,20 @@ resource exhaustion is safe. An independent review, resident-memory evidence,
 retest against merged G0.1 and an ADR update remain required for a feasibility
 decision. Do not infer the predeclared fallback trigger solely from missing
 measurements.
+
+### Allocation-failure gap
+
+The input/state cardinality checks reject before retaining a 129th row, and
+Arrow input array size is checked before processing. They are not a fallible
+allocator or a reservation of process memory. The current state clone and
+`BTreeMap` insertion, string copies and temporary/output vectors allocate
+infallibly. Output also constructs `StringArray::from(Vec<&str>)`: in pinned
+`arrow-array` 59.3.2, that calls `GenericByteArray::from_iter_values`, which
+creates/grows `arrow-buffer` `MutableBuffer`s. In pinned `arrow-buffer` 59.3.2,
+`MutableBuffer::with_capacity` calls `std::alloc::alloc` followed by
+`handle_alloc_error` if allocation fails. Thus an allocator failure in this
+path does not return the kernel's `Err`, and an RSS measurement cannot prove
+otherwise. `Arc` and `RecordBatch` construction also allocate. A fallible
+construction strategy or a separately qualified isolation/allocator mechanism
+is needed before treating memory exhaustion as a controlled error; neither is
+implemented by this spike.
