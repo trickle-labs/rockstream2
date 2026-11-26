@@ -44,3 +44,15 @@ running 1 test
 The measured peak is below the diagnostic limit. The missing full-process
 admission enforcement, allocation-failure handling, load-boundary memory
 measurements, independent checking, and repeat on merged revision remain open.
+
+## Predeclared boundary diagnostic
+
+Before running: compile the same kernel test in release mode, run only
+`tests::configured_boundary_workload` under `/usr/bin/time -l` and record
+peak RSS and the binary/source identities. The test uses the full 128-row
+retained-state cap, 128 input updates in one interval, 32-byte regions and
+128 weighted output rows, and verifies rejection of one additional retained
+row. The diagnostic budget is 64 MiB peak RSS for this process in the named
+local environment. Missing OS counters or execution failure are inconclusive.
+This boundary scenario still does not enforce process RSS or test allocation
+failure and is not promotion evidence.

@@ -469,4 +469,34 @@ mod tests {
         );
         assert_eq!(kernel, before);
     }
+    #[test]
+    fn configured_boundary_workload() {
+        let mut kernel = Kernel::default();
+        let old: Vec<_> = (0..64).map(|i| format!("old-{i:028}")).collect();
+        let new: Vec<_> = (0..64).map(|i| format!("new-{i:028}")).collect();
+        let initial: Vec<_> = old
+            .iter()
+            .enumerate()
+            .map(|(i, region)| (i as i64, region.as_str(), 1))
+            .collect();
+        let initial_orders: Vec<_> = (0..64).map(|i| (i, i, 100, 1)).collect();
+        kernel
+            .apply(0, &customers(&initial), &orders(&initial_orders))
+            .unwrap();
+        let mut changes = Vec::new();
+        for i in 0..64 {
+            changes.push((i as i64, old[i].as_str(), -1));
+            changes.push((i as i64, new[i].as_str(), 1));
+        }
+        let batch = kernel.apply(1, &customers(&changes), &orders(&[])).unwrap();
+        assert_eq!(batch.num_rows(), 128);
+        assert_eq!(kernel.result().len(), 64);
+        assert!(kernel.result().values().all(|&row| row == (1, 100)));
+        let before = kernel.clone();
+        assert_eq!(
+            kernel.apply(2, &customers(&[(999, "N", 1)]), &orders(&[])),
+            Err("state limit")
+        );
+        assert_eq!(kernel, before);
+    }
 }
