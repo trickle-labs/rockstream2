@@ -1,0 +1,15 @@
+[package]
+name = "w1g-kernel"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+arrow-array = "=59.3.2"
+arrow-schema = "=59.3.2"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "deny"
