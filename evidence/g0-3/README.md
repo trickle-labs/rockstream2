@@ -9,14 +9,18 @@ Independent safety review, integration-candidate checks and the required human
 approval remain open.
 
 [Raw run and traces](f4424cf-raw-run.tar.gz) (SHA-256
-`7e82a295e1a6c498d02a675c09a25f55d011f0df034d05c15b60be8b88278a45`)
+`785b2b35e243f9db862ecd67dbbff14e697cc4f80c22a54053798551e826ca73`)
 contains the environment and source hashes, shell transcript, overall exit
 status, and 41 numbered invocations. Each records the arguments, stdout,
 stderr and exit status; verifier directories retain Apalache's detailed logs
 and generated bounded traces. Invocations 1–2 typecheck and check invariants;
 3–20 are the eighteen witnesses; 21–41 are the twenty-one deliberate negative
 controls. The controls return nonzero with counterexamples by design. All 39
-witness/control traces are present. Inspect without overwriting existing files:
+witness/control traces are present. The original archive SHA-256 was
+`7e82a295e1a6c498d02a675c09a25f55d011f0df034d05c15b60be8b88278a45`;
+this repack removes only macOS AppleDouble entries and provenance extended
+attributes. All retained file contents and substantive metadata were compared
+with the original. Inspect without overwriting existing files:
 
 ```sh
 mkdir -p /tmp/rockstream-g03-inspect
