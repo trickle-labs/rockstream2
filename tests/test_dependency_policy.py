@@ -1,5 +1,6 @@
 """Exercise dependency policy against Cargo's real optional-feature graph."""
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -16,6 +17,7 @@ class DependencyPolicy(unittest.TestCase):
             for name in ('w1g-oracle', 'other'):
                 (root / name / 'src').mkdir(parents=True)
                 (root / name / 'src' / 'lib.rs').write_text('')
+            shutil.copyfile(ROOT / 'rust-toolchain.toml', root / 'rust-toolchain.toml')
             (root / 'Cargo.toml').write_text('[workspace]\nresolver="2"\nmembers=["w1g-oracle","other"]\n')
             (root / 'w1g-oracle' / 'Cargo.toml').write_text(
                 '[package]\nname="w1g-oracle"\nversion="0.1.0"\nedition="2024"\n'
@@ -41,6 +43,7 @@ class DependencyPolicy(unittest.TestCase):
             for name in ('w1g-oracle', 'outside'):
                 (root / name / 'src').mkdir(parents=True)
                 (root / name / 'src' / 'lib.rs').write_text('')
+            shutil.copyfile(ROOT / 'rust-toolchain.toml', root / 'rust-toolchain.toml')
             (root / 'Cargo.toml').write_text('[workspace]\nresolver="2"\nmembers=["w1g-oracle"]\nexclude=["outside"]\n')
             (root / 'w1g-oracle' / 'Cargo.toml').write_text(
                 '[package]\nname="w1g-oracle"\nversion="0.1.0"\nedition="2024"\n'
@@ -62,6 +65,7 @@ class DependencyPolicy(unittest.TestCase):
             for path in (root / 'w1g-oracle', outside):
                 (path / 'src').mkdir(parents=True)
                 (path / 'src' / 'lib.rs').write_text('')
+            shutil.copyfile(ROOT / 'rust-toolchain.toml', root / 'rust-toolchain.toml')
             (root / 'Cargo.toml').write_text('[workspace]\nresolver="2"\nmembers=["w1g-oracle"]\n')
             (root / 'w1g-oracle' / 'Cargo.toml').write_text(
                 '[package]\nname="w1g-oracle"\nversion="0.1.0"\nedition="2024"\n'
