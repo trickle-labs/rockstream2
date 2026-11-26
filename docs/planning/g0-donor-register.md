@@ -42,7 +42,8 @@ before reuse.
 | Pinned source path | Disposition and visible coupling | Target |
 | --- | --- | --- |
 | `crates/rockstream-types/src/arrangement.rs` | Propose adapting descriptors; direct imports include IDs, merge laws, serde and SHA-256. Replace hash-only admission. | Semantic-kernel/sharing owners, G1/G3b `DONOR-ARRANGEMENT-01`: the original spec and ID survive reopen; forced digest-collision and semantic/security mismatch tests are new obligations, not historical evidence. |
-| `crates/rockstream-storage/src/trace.rs`, `arrangement_catalog.rs` | Propose adapting trace algorithms and replacing catalog authority; imports include types, serde, verified persistence and Tokio synchronization. | Storage/sharing owners, G2/G3b `DONOR-TRACE-01`: recovered cuts 50 and 100 return the exact rows below; root/pin integration and independent consumer schedules remain open. |
+| `crates/rockstream-storage/src/trace.rs` | Propose adapting trace algorithms; imports include types and serde. | Storage/sharing owners, G2/G3b `DONOR-TRACE-01`: recovered cuts 50 and 100 return the exact rows below; root/pin integration and independent consumer schedules remain open. |
+| `crates/rockstream-storage/src/arrangement_catalog.rs` | Propose replacing catalog authority and adapting lifecycle cases; imports include types, verified persistence and Tokio synchronization. | Storage/sharing owners, G2/G3b `DONOR-ARR-CATALOG-01`: retain an arrangement after the first of two consumers leaves, then reclaim exactly once when the last leaves and frontier reaches 100. New root/pin and race protections remain open. |
 | `crates/rockstream-control/src/frontier.rs` | Propose adapting progress cases and replacing publication wiring; direct imports include SlateDB, audit, IDs and locking. | Runtime owner, G2/G4 `DONOR-FRONTIER-01`: a shard report of 3 after 5 cannot lower the in-memory cluster frontier from 5; new scope/generation fencing and omitted-work checks remain open. |
 | `crates/rockstream-storage/src/shard_db.rs` | Propose extracting lessons and replacing commit authority; imports include object_store, SlateDB, types and format migration. | Storage owner, G0.2/G2 `DONOR-ACK-01`: injected ENOSPC must withhold ACK and recover the complete epoch; new exact-parent reopen and retained history remain open. |
 | `crates/rockstream-sim/src`, `formal` | Propose adapting counterexamples and harness assumptions; replace old model bindings, not historical proof claims. | Verification owner, G0.3/G2/G4 `DONOR-SIM-01` and `DONOR-WORKER-01`: interrupted migration retains all three values and worker failure has the exact expected relation below. Model-to-new-transition mapping and delivered-fault evidence remain open. |
@@ -94,6 +95,12 @@ The seed list is not an exhaustive catalog of all historical donor tests.
   and 10, so compaction may advance only to 10; once both reach 30 it advances
   to 30 and the surviving `key_x` value is `v3`. Adapt the logical expected
   cuts and retention constraints; do not inherit the old storage format.
+- **`DONOR-ARR-CATALOG-01`** — The pinned donor
+  [`test_shared_arrangement_catalog_reclamation_crash_safety`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-sim/tests/sim_shared_trace_crash_boundary_tests.rs#L128)
+  registers views 101 and 102 on one arrangement; removing view 101 leaves one
+  consumer and reclaims nothing. Removing view 102 and advancing compaction
+  frontier to 100 reclaims exactly that arrangement and leaves zero physical
+  arrangements. This in-memory test is not a process-crash or pin-race proof.
 - **`DONOR-FRONTIER-01`** — The pinned donor
   [`cluster_frontier_is_non_decreasing`](https://github.com/trickle-labs/rockstream/blob/d3f973a84f4263bedd6505039d7f469d4708c478/crates/rockstream-control/src/frontier.rs#L1166)
   ingests shard 0 at epoch 5 then stale epoch 3; the expected frontier is 5.
