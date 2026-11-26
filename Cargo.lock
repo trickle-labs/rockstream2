@@ -416,6 +416,7 @@ version = "0.1.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
+ "w1g-oracle",
 ]
 
 [[package]]

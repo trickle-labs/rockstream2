@@ -234,7 +234,12 @@ mod tests {
     fn frozen_w1g_all_cuts() {
         let mut kernel = Kernel::default();
         assert!(kernel.result().is_empty());
-        assert_eq!(kernel.ungrouped_count().unwrap().values(), &[0]);
+        assert_eq!(
+            kernel.ungrouped_count().unwrap().values(),
+            &w1g_oracle::ungrouped_count(&BTreeMap::new(), &BTreeMap::new())
+        );
+        let mut oracle_customers = BTreeMap::new();
+        let mut oracle_orders = BTreeMap::new();
         let input = include_str!("../../../fixtures/w1g/transactions.csv");
         let expected = include_str!("../../../fixtures/w1g/expected.csv");
         for epoch in 0..4 {
@@ -251,12 +256,40 @@ mod tests {
                 let weight = f[2].parse().unwrap();
                 let id = f[3].parse().unwrap();
                 match f[1] {
-                    "customer" => c.push((id, f[4], weight)),
+                    "customer" => {
+                        c.push((id, f[4], weight));
+                        if weight == 1 {
+                            assert!(oracle_customers.insert(id, f[4].to_owned()).is_none());
+                        } else {
+                            assert_eq!(oracle_customers.remove(&id).as_deref(), Some(f[4]));
+                        }
+                    }
                     "order" => o.push((id, f[4].parse().unwrap(), f[5].parse().unwrap(), weight)),
                     _ => panic!("unknown relation"),
                 }
             }
+            for &(id, customer, cents, weight) in &o {
+                if weight == 1 {
+                    assert!(oracle_orders.insert(id, (customer, cents)).is_none());
+                } else {
+                    assert_eq!(oracle_orders.remove(&id), Some((customer, cents)));
+                }
+            }
             kernel.apply(epoch, &customers(&c), &orders(&o)).unwrap();
+            let oracle = w1g_oracle::evaluate(&oracle_customers, &oracle_orders)
+                .into_iter()
+                .map(|(region, (count, cents))| (region, (count, i128::from(cents))))
+                .collect::<BTreeMap<_, _>>();
+            assert_eq!(
+                kernel.result(),
+                &oracle,
+                "independent batch at cut {}",
+                epoch + 1
+            );
+            assert_eq!(
+                kernel.ungrouped_count().unwrap().values(),
+                &w1g_oracle::ungrouped_count(&oracle_customers, &oracle_orders)
+            );
             let mut want = BTreeMap::new();
             for line in expected
                 .lines()
@@ -306,5 +339,23 @@ mod tests {
         kernel
             .apply(0, &customers(&[(1, "North", 1)]), &orders(&[]))
             .unwrap();
+    }
+    #[test]
+    fn state_and_region_limits_leave_state_unchanged() {
+        let mut kernel = Kernel::default();
+        let rows: Vec<_> = (0..MAX_ROWS).map(|id| (id as i64, "N", 1)).collect();
+        kernel.apply(0, &customers(&rows), &orders(&[])).unwrap();
+        let before = kernel.clone();
+        assert_eq!(
+            kernel.apply(1, &customers(&[(999, "N", 1)]), &orders(&[])),
+            Err("state limit")
+        );
+        assert_eq!(kernel, before);
+        let long_region = "x".repeat(MAX_REGION_BYTES + 1);
+        assert_eq!(
+            kernel.apply(1, &customers(&[(999, &long_region, 1)]), &orders(&[])),
+            Err("region limit")
+        );
+        assert_eq!(kernel, before);
     }
 }

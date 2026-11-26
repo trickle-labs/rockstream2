@@ -13,3 +13,6 @@ unsafe_code = "forbid"
 
 [lints.clippy]
 all = "deny"
+
+[dev-dependencies]
+w1g-oracle = { path = "../w1g-oracle" }

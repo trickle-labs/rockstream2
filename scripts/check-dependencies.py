@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 # Each workspace crate lists every workspace crate it may reach, directly or not.
-ALLOWED = {"w1g-oracle": set(), "w1g-kernel": set()}
+ALLOWED = {"w1g-oracle": set(), "w1g-kernel": {"w1g-oracle"}}
 
 
 def valid(packages, nodes, workspace, allowed):
