@@ -16,9 +16,10 @@ changes also advance the revision. Collection requires abstract object age 2.
 The model bounds are two publication operation IDs, two attempt IDs, two owner
 generations, three root revisions, participants `{1, 2}` plus foreign `3`, and
 one object and pin. A monotonic allocator issues at most two attempt IDs
-without reuse. A single receipt-attempt ID is shared by the abstract set;
-duplicates are represented separately. A receive transition may deliver a
-receipt for an abandoned attempt, and a witness exercises that interleaving.
+without reuse. Partitions arrive independently, each with its own attempt ID; duplicates are
+represented separately. A receive transition may deliver a receipt for an
+abandoned attempt. Witnesses cover missing partitions and mixed-attempt receipt
+sets, and separate mutants attempt to publish each invalid case.
 Negative controls allow missing/foreign receipts, partial visibility, a stale root or publication parent, a refresh
 that adopts a new owner generation, stale ownership, a repeated effect,
 a response using the current root, stale pin or retire commits after the
@@ -39,7 +40,7 @@ infrastructure errors do not count as a negative-control success. Apalache is
 symbolic and does not report an enumerated state count. `QUINT` may name a
 non-default Quint executable.
 
-The abstraction does not model per-participant receipt payloads or arrival,
+The abstraction does not model receipt payloads, interval or plan identity,
 durable sealing, or the complete metadata tree and staging namespaces. Its
 visibility flags do not model output values or multiple versioned partition
 roots. The competing publication is an atomic abstract action rather than a
