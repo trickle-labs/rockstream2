@@ -12,12 +12,15 @@ collection also requires abstract object age 2.
 
 The model bounds are two publication operation IDs, two attempt IDs, two owner
 generations, three root revisions, participants `{1, 2}` plus foreign `3`, and
-one object and pin. A single receipt-attempt ID is shared by the abstract set;
+one object and pin. A monotonic allocator issues at most two attempt IDs
+without reuse. A single receipt-attempt ID is shared by the abstract set;
 duplicates are represented separately. A receive transition may deliver a
-receipt for an abandoned attempt, and a witness exercises that interleaving. Negative controls allow missing/foreign
+receipt for an abandoned attempt, and a witness exercises that interleaving.
+Negative controls allow missing/foreign
 receipts, partial visibility, a stale root, stale ownership, a repeated effect,
 a response using the current root, pinning or referencing retired data, and
-publishing retired data. Each must produce a counterexample.
+publishing retired data. A separate mutant reuses an abandoned attempt ID and
+can publish its stale receipt. Each mutant must produce a counterexample.
 
 With Node, Java and Quint 0.34.0 installed, run:
 
@@ -26,14 +29,14 @@ models/g0/check.sh
 ```
 
 Quint downloads Apalache 0.62.4 on first use and starts a local server. The
-script checks all paths through eight steps, checks lost-response recovery and delayed-receipt
-witnesses, and requires each mutant to report an actual counterexample;
+script checks all paths through eight steps, checks lost-response recovery,
+delayed-receipt and bad attempt-reuse witnesses, and requires each mutant to report an actual counterexample;
 infrastructure errors do not count as a negative-control success. Apalache is
 symbolic and does not report an enumerated state count. `QUINT` may name a
 non-default Quint executable.
 
-The abstraction does not model per-participant receipt payloads, per-participant receipt arrival
-or durable sealing, or the complete metadata tree and staging namespaces. Its
+The abstraction does not model per-participant receipt payloads or arrival,
+durable sealing, or the complete metadata tree and staging namespaces. Its
 visibility flags do not model output values or multiple versioned partition
 roots. It uses one root revision as the expected-parent comparison, so an
 unrelated metadata advance requires re-preparation rather than distinguishing a
