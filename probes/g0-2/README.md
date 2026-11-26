@@ -22,17 +22,21 @@ cargo build --locked --manifest-path probes/g0-2/slate/Cargo.toml
 python3 probes/g0-2/silo_smoke.py probes/g0-2/slate/target/debug/g0-2-slate-probe
 ```
 
-The Rust probe stages one immutable counter delta, conditionally creates a
-published root, and applies the delta and applied-cut marker in one durable
+The Rust probe stages one immutable counter delta and an unreferenced decoy,
+conditionally creates a published root naming the delta and its SHA-256, and
+verifies that digest before applying the delta and applied-cut marker in one durable
 SlateDB batch. The runner delivers SIGKILL after publication and after the
 durable batch, reopens the writable instance and verifies the count is one.
 A deliberate recovery mutation ignores the marker and must fail the same
-count assertion. This tests one interval and one writer; it does not exercise a
-kill *during* application, ownership takeover or checkpoint registration.
+count assertion. A corrupt referenced delta must fail digest validation. The
+probe also creates a non-expiring checkpoint, conditionally registers its ID in
+the root and checks that a stale root version cannot overwrite the registration.
+This tests one interval and one writer; it does not exercise a kill *during*
+application, ownership takeover or recovery from a registered checkpoint.
 
 This smoke test is **not G0.2 qualification**: it does not exercise a real
 provider, ambiguous responses, group commit, W1-G, both SlateDB layouts,
-mid-apply recovery, checkpoint registration or overlay caps. It cannot select a storage
+mid-apply recovery, checkpoint-based recovery or overlay caps. It cannot select a storage
 layout or establish cloud latency, cost, or durability. Apply the predeclared
 qualification rubric and budgets separately for the real-provider run.
 

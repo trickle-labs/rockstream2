@@ -44,15 +44,15 @@ def expect(actual, expected, label):
 def slate_recovery(binary):
     def kill_at_ready(mode, prefix):
         process = subprocess.Popen([binary, mode, prefix], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        line = None
         try:
-            if not select.select([process.stdout], [], [], 60)[0]:
-                raise RuntimeError(f"{mode} did not reach its crash boundary")
-            line = process.stdout.readline()
-            if line != b"READY\n":
-                raise RuntimeError(f"{mode} failed before crash boundary: {line!r} {process.stderr.read()!r}")
+            if select.select([process.stdout], [], [], 60)[0]:
+                line = process.stdout.readline()
         finally:
             process.kill()
-            process.communicate(timeout=10)
+            _, stderr = process.communicate(timeout=10)
+        if line != b"READY\n":
+            raise RuntimeError(f"{mode} failed to reach its crash boundary: {line!r} {stderr!r}")
         expect(process.returncode, -9, f"{mode} SIGKILL")
 
     def recover(prefix, mode="recover"):
@@ -68,6 +68,14 @@ def slate_recovery(binary):
     mutant = recover("crash-after-apply", "recover-reapply")
     if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
         raise AssertionError(f"double-apply negative control was not detected: {mutant.stderr!r}")
+    kill_at_ready("publish-corrupt", "corrupt-delta")
+    corrupt = recover("corrupt-delta")
+    if corrupt.returncode == 0 or b"delta digest mismatch" not in corrupt.stderr:
+        raise AssertionError(f"corrupt committed delta was not rejected: {corrupt.stderr!r}")
+    kill_at_ready("publish", "checkpoint-registration")
+    kill_at_ready("apply-and-wait", "checkpoint-registration")
+    result = recover("checkpoint-registration", "checkpoint")
+    expect((result.returncode, result.stdout), (0, b"CHECKPOINTED\n"), f"checkpoint: {result.stderr!r}")
 
 
 def main():
@@ -93,7 +101,8 @@ def main():
         else:
             raise RuntimeError("Silo did not become ready within 10 seconds")
 
-        expect(request("PUT")[0], 200, "create bucket")
+        bucket = request("PUT")
+        expect(bucket[0], 200, f"create bucket: {bucket[2]!r}")
         first = request("PUT", "/root", "first", "If-None-Match: *")
         expect(first[0], 200, "create-if-absent")
         expect(request("PUT", "/root", "duplicate", "If-None-Match: *")[0], 412, "duplicate create")
