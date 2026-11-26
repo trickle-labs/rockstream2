@@ -24,7 +24,7 @@ each scope. Duplicates and delayed receipts from abandoned attempts are modeled.
 
 Coverage mutants bypass receipt validation at sealing and publication while
 retaining the seal-integrity comparison. Witnesses require invalid missing,
-mixed-attempt, interval-mismatch and plan-mismatch sets to be published with an
+duplicate, mixed-attempt, interval-mismatch and plan-mismatch sets to be published with an
 intact seal. Another mutant changes one receipt identity after sealing and
 commits it by bypassing the seal comparison. The remaining mutants cover partial
 visibility, stale CAS or parent, unsafe ownership refresh, repeated effects,

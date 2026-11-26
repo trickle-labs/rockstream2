@@ -34,7 +34,9 @@ model=$(dirname "$0")/protocol.qnt
 
 "$quint" verify "$model" --observation 's.planRevision == 2 and s.preparedPlan == 2 and s.sealedPlan == 2 and s.effects1 == 1 and not(s.prepared)' --max-steps 8 --verbosity 0
 
-for control in publication:bad_publication_step publication:bad_seal_step publication:bad_atomic_step publication:bad_foreign_step publication:bad_mixed_step publication:bad_missing_step publication:bad_interval_step publication:bad_plan_step publication:bad_plan_revision_step publication:bad_parent_step publication:bad_revision_step fencing_and_outcomes:bad_reuse_step fencing_and_outcomes:bad_refresh_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_pin_step gc:bad_retire_step gc:bad_resurrection_step gc:bad_publish_retired_step; do
+"$quint" verify "$model" --no-invariant --step bad_duplicate_step --observation 's.badPublication and not(s.badSealCommit) and s.duplicate and s.receipts == Set(1, 2) and s.receipt1Attempt == s.attempt and s.receipt2Attempt == s.attempt and s.receipt1Scope == expectedScope and s.receipt2Scope == expectedScope' --max-steps 8 --verbosity 0
+
+for control in publication:bad_publication_step publication:bad_seal_step publication:bad_atomic_step publication:bad_duplicate_step publication:bad_foreign_step publication:bad_mixed_step publication:bad_missing_step publication:bad_interval_step publication:bad_plan_step publication:bad_plan_revision_step publication:bad_parent_step publication:bad_revision_step fencing_and_outcomes:bad_reuse_step fencing_and_outcomes:bad_refresh_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_pin_step gc:bad_retire_step gc:bad_resurrection_step gc:bad_publish_retired_step; do
   invariant=${control%%:*}
   step=${control#*:}
   bound=8
