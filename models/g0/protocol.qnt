@@ -3,7 +3,7 @@ module protocol {
   type State = {
     head: int, publicationHead: int, generation: int, prepared: bool, parent: int, revision: int, owner: int, preparedGeneration: int, refreshed: bool,
     receipts: Set[int], duplicate: bool, attempt: int, lastAttempt: int, abandonedAttempt: int, receiptAttempt: int, op: int, done1: bool, done2: bool, metadataDone: bool, effects1: int, publications: int, visible1: bool, visible2: bool,
-    response1: bool, outcome1: int, reply1: int, pinned: bool, root: bool, retired: bool, deleted: bool, age: int,
+    response1: bool, outcome1: int, reply1: int, pinned: bool, pinPending: bool, pinRevision: int, retirePending: bool, retireRevision: int, root: bool, retired: bool, deleted: bool, age: int,
     stalePublished: bool, badPublication: bool, badParent: bool, badFence: bool, badGc: bool
   }
   var s: State
@@ -11,7 +11,7 @@ module protocol {
   action init = s' = {
     head: 0, publicationHead: 0, generation: 0, prepared: false, parent: 0, revision: 0, owner: 0, preparedGeneration: 0, refreshed: false,
     receipts: Set(), duplicate: false, attempt: 0, lastAttempt: 0, abandonedAttempt: 0, receiptAttempt: 0, op: 1, done1: false, done2: false, metadataDone: false, effects1: 0, publications: 0, visible1: false, visible2: false,
-    response1: false, outcome1: 0, reply1: 0, pinned: false, root: true, retired: false, deleted: false, age: 0,
+    response1: false, outcome1: 0, reply1: 0, pinned: false, pinPending: false, pinRevision: 0, retirePending: false, retireRevision: 0, root: true, retired: false, deleted: false, age: 0,
     stalePublished: false, badPublication: false, badParent: false, badFence: false, badGc: false
   }
 
@@ -75,21 +75,39 @@ module protocol {
   // An unrelated metadata operation advances the root, not a publication.
   action advance = all { not(s.metadataDone), s.head < 3, s' = s.with("head", s.head + 1).with("metadataDone", true) }
   action tick = all { s.age < 2, s' = s.with("age", s.age + 1) }
-  action pin(bad) = all {
-    not(s.pinned), not(s.retired) or bad,
-    s' = s.with("pinned", true).with("badGc", s.badGc or s.retired)
+  // These pending operations read a snapshot and compete on the same metadata CAS.
+  action preparePin = all {
+    not(s.pinPending), not(s.pinned), not(s.retired),
+    s' = s.with("pinPending", true).with("pinRevision", s.head)
   }
-  action unpin = all { s.pinned, s' = s.with("pinned", false) }
-  action releaseRoot = all { s.root, s' = s.with("root", false).with("visible1", false).with("visible2", false) }
-  action reference(bad) = all { not(s.root), not(s.retired) or bad, s' = s.with("root", true).with("badGc", s.badGc or s.retired) }
-  action retire = all { not(s.retired), not(s.pinned), not(s.root), s' = s.with("retired", true) }
+  action prepareRetire = all {
+    not(s.retirePending), not(s.retired), not(s.pinned), not(s.root),
+    s' = s.with("retirePending", true).with("retireRevision", s.head)
+  }
+  action refreshPin = all { s.pinPending, s.pinRevision != s.head, s' = s.with("pinRevision", s.head) }
+  action refreshRetire = all { s.retirePending, s.retireRevision != s.head, s' = s.with("retireRevision", s.head) }
+  action commitPin(bad) = all {
+    s.pinPending, not(s.pinned), s.head < 3,
+    (s.pinRevision == s.head and not(s.retired)) or bad,
+    s' = s.with("pinPending", false).with("pinned", true).with("head", s.head + 1)
+      .with("badGc", s.badGc or s.retired or s.pinRevision != s.head)
+  }
+  action commitRetire(bad) = all {
+    s.retirePending, not(s.retired), s.head < 3,
+    (s.retireRevision == s.head and not(s.pinned) and not(s.root)) or bad,
+    s' = s.with("retirePending", false).with("retired", true).with("head", s.head + 1)
+      .with("badGc", s.badGc or s.pinned or s.root or s.retireRevision != s.head)
+  }
+  action unpin = all { s.pinned, s.head < 3, s' = s.with("pinned", false).with("head", s.head + 1) }
+  action releaseRoot = all { s.root, s.head < 3, s' = s.with("root", false).with("visible1", false).with("visible2", false).with("head", s.head + 1) }
+  action reference(bad) = all { not(s.root), s.head < 3, not(s.retired) or bad, s' = s.with("root", true).with("head", s.head + 1).with("badGc", s.badGc or s.retired) }
   action collect = all {
     s.retired, not(s.pinned), not(s.root), not(s.deleted), s.age >= 2,
     s' = s.with("deleted", true)
   }
 
   action step = any { prepare(false), receive, publish(false, false, false, false, false, false, false), abandon, reassign,
-    reconcile(false), advance, refresh(false), competingPublish, tick, pin(false), unpin, releaseRoot, reference(false), retire, collect }
+    reconcile(false), advance, refresh(false), competingPublish, tick, preparePin, prepareRetire, refreshPin, refreshRetire, commitPin(false), commitRetire(false), unpin, releaseRoot, reference(false), collect }
   action bad_atomic_step = any { step, publish(false, false, false, false, false, true, false) }
   action bad_reuse_step = any { step, prepare(true) }
   action bad_publication_step = any { step, publish(true, false, false, false, false, false, false) }
@@ -100,12 +118,13 @@ module protocol {
   action bad_revision_step = any { step, publish(false, false, false, false, false, false, true) }
   action bad_parent_step = any { step, publish(false, false, false, true, false, false, false) }
   action bad_reply_step = any { step, reconcile(true) }
-  action bad_gc_step = any { step, pin(true) }
+  action bad_pin_step = any { step, all { s.retired, commitPin(true) } }
+  action bad_retire_step = any { step, all { s.pinned, commitRetire(true) } }
   action bad_publish_retired_step = any { step, publish(false, false, false, false, true, false, false) }
   action bad_resurrection_step = any { step, reference(true) }
 
   val publication = not(s.badPublication) and not(s.badParent) and
     s.visible1 == s.visible2 and (not(s.visible1) or s.publications > 0)
   val fencing_and_outcomes = not(s.stalePublished) and not(s.badFence) and s.effects1 <= 1 and (not(s.response1) or s.reply1 == s.outcome1)
-  val gc = (not(s.visible1) or (s.root and not(s.retired) and not(s.deleted))) and not(s.badGc) and not(s.deleted and (s.pinned or s.root)) and not(s.retired and s.root) and (not(s.deleted) or s.age >= 2)
+  val gc = (not(s.visible1) or (s.root and not(s.retired) and not(s.deleted))) and not(s.badGc) and not(s.deleted and (s.pinned or s.root)) and not(s.retired and (s.root or s.pinned)) and (not(s.deleted) or s.age >= 2)
 }

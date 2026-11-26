@@ -14,7 +14,11 @@ model=$(dirname "$0")/protocol.qnt
 
 "$quint" verify "$model" --observation 's.refreshed and s.metadataDone and s.publications == 1 and s.parent == 0 and s.publicationHead == 1 and s.effects1 == 1' --max-steps 8 --verbosity 0
 
-for control in publication:bad_publication_step publication:bad_atomic_step publication:bad_foreign_step publication:bad_parent_step publication:bad_revision_step fencing_and_outcomes:bad_reuse_step fencing_and_outcomes:bad_refresh_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_gc_step gc:bad_resurrection_step gc:bad_publish_retired_step; do
+"$quint" verify "$model" --observation 's.prepared and s.pinned and s.revision < s.head' --max-steps 8 --verbosity 0
+"$quint" verify "$model" --observation 's.pinned and s.retirePending and s.retireRevision < s.head' --max-steps 8 --verbosity 0
+"$quint" verify "$model" --observation 's.retired and s.pinPending and s.pinRevision < s.head' --max-steps 8 --verbosity 0
+
+for control in publication:bad_publication_step publication:bad_atomic_step publication:bad_foreign_step publication:bad_parent_step publication:bad_revision_step fencing_and_outcomes:bad_reuse_step fencing_and_outcomes:bad_refresh_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_pin_step gc:bad_retire_step gc:bad_resurrection_step gc:bad_publish_retired_step; do
   invariant=${control%%:*}
   step=${control#*:}
   output=$("$quint" verify "$model" --invariant "$invariant" --step "$step" --max-steps 8 --verbosity 0 2>&1) && {
