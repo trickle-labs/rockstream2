@@ -74,6 +74,24 @@ that outcomes remain present after a later root advance. This is a two-operation
 experiment, not a production scheduler, ambiguous-response fault injection,
 fairness, bounded retry, or throughput qualification.
 
+The synthetic experiment is predeclared as 32 sequential updates to one
+integer, with a new exclusive cut after each update. The delta prototype writes
+one immutable value object and one conditional root update per cut, keeping at
+most eight pending entries and registering a checkpoint every eight cuts. The
+history prototype writes each value under its cut in a durable SlateDB batch.
+Each closes and reopens its instance and checks all 32 stored cuts or deltas;
+the history path also reads cut 8 before closing. They run separately on
+the same disposable Silo instance. Counters wrap the `object_store` interface,
+including calls issued by SlateDB: PUT attempts and successes and their payload
+sizes, GET calls and successes and response-advertised range sizes, LIST,
+delete-stream and COPY calls, and multipart starts. The experiment fails if a
+multipart upload starts because its payload is not instrumented. The counters
+are API-boundary observations, not HTTP request counts, bytes consumed or wire
+bytes: retries, pagination, bulk operations and streaming may differ. They
+include setup, checkpointing, and clean close; they do not include idle costs,
+crash recovery or cloud billing. The synthetic schemas and checkpoint schedules
+are deliberately minimal and are not a provider qualification or layout vote.
+
 This smoke test is **not G0.2 qualification**: it does not exercise a real
 provider, ambiguous responses, a complete group-commit scheduler, a full comparison of both storage layouts,
 general mid-apply recovery, complete checkpoint-based recovery or an integrated serving

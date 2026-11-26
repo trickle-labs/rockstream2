@@ -104,6 +104,10 @@ def slate_recovery(binary):
     mutant = recover("history-crash-bad", "w1g-history-bad")
     if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
         raise AssertionError(f"history replay negative control was not detected: {mutant.stderr!r}")
+    metrics = recover("synthetic", "synthetic")
+    if metrics.returncode != 0 or metrics.stdout.count(b"SYNTHETIC layout=") != 2:
+        raise AssertionError(f"synthetic experiment failed: {metrics.stdout!r} {metrics.stderr!r}")
+    print(metrics.stdout.decode().strip())
 
 
 def main():
