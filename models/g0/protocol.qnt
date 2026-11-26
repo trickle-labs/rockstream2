@@ -2,7 +2,7 @@
 module protocol {
   type State = {
     head: int, publicationHead: int, generation: int, prepared: bool, parent: int, revision: int, owner: int, preparedGeneration: int, refreshed: bool,
-    receipts: Set[int], duplicate: bool, attempt: int, lastAttempt: int, abandonedAttempt: int, receipt1Attempt: int, receipt2Attempt: int, receipt1Id: int, receipt2Id: int, sealed: bool, sealedAttempt: int, sealedParent: int, sealedOwner: int, sealedReceipt1: int, sealedReceipt2: int, sealedReceipts: Set[int], sealedDuplicate: bool, sealedReceipt1Attempt: int, sealedReceipt2Attempt: int, op: int, done1: bool, done2: bool, metadataDone: bool, effects1: int, publications: int, visible1: bool, visible2: bool,
+    receipts: Set[int], duplicate: bool, attempt: int, lastAttempt: int, abandonedAttempt: int, receipt1Attempt: int, receipt2Attempt: int, receipt1Id: int, receipt2Id: int, receipt1Scope: int, receipt2Scope: int, sealed: bool, sealedAttempt: int, sealedParent: int, sealedOwner: int, sealedReceipt1: int, sealedReceipt2: int, sealedReceipts: Set[int], sealedDuplicate: bool, sealedReceipt1Attempt: int, sealedReceipt2Attempt: int, sealedReceipt1Scope: int, sealedReceipt2Scope: int, op: int, done1: bool, done2: bool, metadataDone: bool, effects1: int, publications: int, visible1: bool, visible2: bool,
     response1: bool, outcome1: int, reply1: int, pinned: bool, pinPending: bool, pinRevision: int, retirePending: bool, retireRevision: int, root: bool, retired: bool, deleted: bool, age: int,
     stalePublished: bool, badSealCommit: bool, badPublication: bool, badParent: bool, badFence: bool, badGc: bool
   }
@@ -10,7 +10,7 @@ module protocol {
 
   action init = s' = {
     head: 0, publicationHead: 0, generation: 0, prepared: false, parent: 0, revision: 0, owner: 0, preparedGeneration: 0, refreshed: false,
-    receipts: Set(), duplicate: false, attempt: 0, lastAttempt: 0, abandonedAttempt: 0, receipt1Attempt: 0, receipt2Attempt: 0, receipt1Id: 0, receipt2Id: 0, sealed: false, sealedAttempt: 0, sealedParent: 0, sealedOwner: 0, sealedReceipt1: 0, sealedReceipt2: 0, sealedReceipts: Set(), sealedDuplicate: false, sealedReceipt1Attempt: 0, sealedReceipt2Attempt: 0, op: 1, done1: false, done2: false, metadataDone: false, effects1: 0, publications: 0, visible1: false, visible2: false,
+    receipts: Set(), duplicate: false, attempt: 0, lastAttempt: 0, abandonedAttempt: 0, receipt1Attempt: 0, receipt2Attempt: 0, receipt1Id: 0, receipt2Id: 0, receipt1Scope: 0, receipt2Scope: 0, sealed: false, sealedAttempt: 0, sealedParent: 0, sealedOwner: 0, sealedReceipt1: 0, sealedReceipt2: 0, sealedReceipts: Set(), sealedDuplicate: false, sealedReceipt1Attempt: 0, sealedReceipt2Attempt: 0, sealedReceipt1Scope: 0, sealedReceipt2Scope: 0, op: 1, done1: false, done2: false, metadataDone: false, effects1: 0, publications: 0, visible1: false, visible2: false,
     response1: false, outcome1: 0, reply1: 0, pinned: false, pinPending: false, pinRevision: 0, retirePending: false, retireRevision: 0, root: true, retired: false, deleted: false, age: 0,
     stalePublished: false, badSealCommit: false, badPublication: false, badParent: false, badFence: false, badGc: false
   }
@@ -22,7 +22,7 @@ module protocol {
       if (reuse) s.lastAttempt > 0 else s.lastAttempt < 2,
       s' = s.with("prepared", true).with("parent", s.publicationHead).with("revision", s.head)
         .with("owner", s.generation).with("preparedGeneration", s.generation).with("refreshed", false).with("receipts", Set()).with("duplicate", false).with("attempt", if (reuse) s.lastAttempt else s.lastAttempt + 1)
-        .with("lastAttempt", if (reuse) s.lastAttempt else s.lastAttempt + 1).with("receipt1Attempt", 0).with("receipt2Attempt", 0).with("receipt1Id", 0).with("receipt2Id", 0).with("sealed", false).with("op", operation)
+        .with("lastAttempt", if (reuse) s.lastAttempt else s.lastAttempt + 1).with("receipt1Attempt", 0).with("receipt2Attempt", 0).with("receipt1Id", 0).with("receipt2Id", 0).with("receipt1Scope", 0).with("receipt2Scope", 0).with("sealed", false).with("op", operation)
     }
   }
 
@@ -31,6 +31,8 @@ module protocol {
     nondet partition = Set(1, 2, 3).oneOf()
     nondet receiptAttempt = Set(1, 2).oneOf()
     nondet receiptId = Set(1, 2).oneOf()
+    // Scope 1=(interval 1, plan 1), 2=(interval 2, plan 1), 3=(interval 1, plan 2).
+    nondet receiptScope = Set(1, 2, 3).oneOf()
     all {
       s.prepared, not(s.sealed), not(s.duplicate),
       s' = s.with("receipts", s.receipts.union(Set(partition)))
@@ -39,6 +41,8 @@ module protocol {
         .with("receipt2Attempt", if (partition == 2 and not(s.receipts.contains(2))) receiptAttempt else s.receipt2Attempt)
         .with("receipt1Id", if (partition == 1 and not(s.receipts.contains(1))) receiptId else s.receipt1Id)
         .with("receipt2Id", if (partition == 2 and not(s.receipts.contains(2))) receiptId else s.receipt2Id)
+        .with("receipt1Scope", if (partition == 1 and not(s.receipts.contains(1))) receiptScope else s.receipt1Scope)
+        .with("receipt2Scope", if (partition == 2 and not(s.receipts.contains(2))) receiptScope else s.receipt2Scope)
     }
   }
 
@@ -46,17 +50,20 @@ module protocol {
     s.sealedParent == s.parent and s.sealedOwner == s.owner and
     s.sealedReceipt1 == s.receipt1Id and s.sealedReceipt2 == s.receipt2Id and
     s.sealedReceipts == s.receipts and s.sealedDuplicate == s.duplicate and
-    s.sealedReceipt1Attempt == s.receipt1Attempt and s.sealedReceipt2Attempt == s.receipt2Attempt
+    s.sealedReceipt1Attempt == s.receipt1Attempt and s.sealedReceipt2Attempt == s.receipt2Attempt and
+    s.sealedReceipt1Scope == s.receipt1Scope and s.sealedReceipt2Scope == s.receipt2Scope
 
   action seal(badReceipts) = all {
     s.prepared, not(s.sealed),
     (s.receipts == Set(1, 2) and not(s.duplicate) and
-      s.receipt1Attempt == s.attempt and s.receipt2Attempt == s.attempt) or badReceipts,
+      s.receipt1Attempt == s.attempt and s.receipt2Attempt == s.attempt and
+      s.receipt1Scope == 1 and s.receipt2Scope == 1) or badReceipts,
     s' = s.with("sealed", true).with("sealedAttempt", s.attempt)
       .with("sealedParent", s.parent).with("sealedOwner", s.owner)
       .with("sealedReceipt1", s.receipt1Id).with("sealedReceipt2", s.receipt2Id)
       .with("sealedReceipts", s.receipts).with("sealedDuplicate", s.duplicate)
       .with("sealedReceipt1Attempt", s.receipt1Attempt).with("sealedReceipt2Attempt", s.receipt2Attempt)
+      .with("sealedReceipt1Scope", s.receipt1Scope).with("sealedReceipt2Scope", s.receipt2Scope)
   }
 
   // The two expected partition receipts are bound to this prepared attempt.
@@ -65,7 +72,8 @@ module protocol {
     s.parent == s.publicationHead or ignoreParent,
     s.revision == s.head or ignoreRevision,
     sealMatches or ignoreSeal,
-    (s.receipts == Set(1, 2) and not(s.duplicate) and s.receipt1Attempt == s.attempt and s.receipt2Attempt == s.attempt) or badReceipts,
+    (s.receipts == Set(1, 2) and not(s.duplicate) and s.receipt1Attempt == s.attempt and s.receipt2Attempt == s.attempt and
+      s.receipt1Scope == 1 and s.receipt2Scope == 1) or badReceipts,
     s.owner == s.generation or badOwner,
     (s.op == 1 and (not(s.done1) or badRetry)) or (s.op == 2 and not(s.done2)),
     (not(s.retired) and not(s.deleted)) or ignoreRetirement,
@@ -79,7 +87,7 @@ module protocol {
       .with("outcome1", if (s.op == 1 and not(s.done1)) s.head + 1 else s.outcome1)
       .with("badSealCommit", s.badSealCommit or not(sealMatches))
       .with("badParent", s.badParent or s.parent != s.publicationHead or s.revision != s.head)
-      .with("badPublication", s.badPublication or s.receipts != Set(1, 2) or s.duplicate or (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt))
+      .with("badPublication", s.badPublication or s.receipts != Set(1, 2) or s.duplicate or (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt) or s.receipt1Scope != 1 or s.receipt2Scope != 1)
       .with("badFence", s.badFence or s.preparedGeneration != s.generation)
   }
   action abandon = all { s.prepared, s' = s.with("prepared", false).with("abandonedAttempt", s.attempt) }
@@ -143,9 +151,11 @@ module protocol {
   action bad_publication_step = any { step, seal(true), publish(true, false, false, false, false, false, false, false) }
   action bad_fencing_step = any { step, publish(false, true, false, false, false, false, false, false) }
   action bad_retry_step = any { step, publish(false, false, true, false, false, false, false, false) }
-  action bad_foreign_step = any { step, all { s.receipts == Set(1, 2), not(s.duplicate), (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), seal(true) }, all { s.receipts == Set(1, 2), not(s.duplicate), (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), publish(true, false, false, false, false, false, false, false) } }
-  action bad_missing_step = any { step, all { s.receipts == Set(1), s.receipt1Attempt == s.attempt, seal(true) }, all { s.receipts == Set(1), s.receipt1Attempt == s.attempt, publish(true, false, false, false, false, false, false, false) } }
-  action bad_mixed_step = any { step, all { s.abandonedAttempt == 1, s.attempt == 2, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, not(s.duplicate), seal(true) }, all { s.abandonedAttempt == 1, s.attempt == 2, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, not(s.duplicate), publish(true, false, false, false, false, false, false, false) } }
+  action bad_foreign_step = any { step, all { s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Scope == 1, s.receipt2Scope == 1, (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), seal(true) }, all { s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Scope == 1, s.receipt2Scope == 1, (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), publish(true, false, false, false, false, false, false, false) } }
+  action bad_missing_step = any { step, all { s.receipts == Set(1), s.receipt1Attempt == s.attempt, s.receipt1Scope == 1, seal(true) }, all { s.receipts == Set(1), s.receipt1Attempt == s.attempt, s.receipt1Scope == 1, publish(true, false, false, false, false, false, false, false) } }
+  action bad_mixed_step = any { step, all { s.abandonedAttempt == 1, s.attempt == 2, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, s.receipt1Scope == 1, s.receipt2Scope == 1, not(s.duplicate), seal(true) }, all { s.abandonedAttempt == 1, s.attempt == 2, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, s.receipt1Scope == 1, s.receipt2Scope == 1, not(s.duplicate), publish(true, false, false, false, false, false, false, false) } }
+  action bad_interval_step = any { step, all { s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 2, s.receipt2Scope == 1, seal(true) }, all { s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 2, s.receipt2Scope == 1, publish(true, false, false, false, false, false, false, false) } }
+  action bad_plan_step = any { step, all { s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 3, s.receipt2Scope == 1, seal(true) }, all { s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 3, s.receipt2Scope == 1, publish(true, false, false, false, false, false, false, false) } }
   action bad_refresh_step = any { step, refresh(true) }
   action bad_revision_step = any { step, publish(false, false, false, false, false, false, true, false) }
   action bad_parent_step = any { step, publish(false, false, false, true, false, false, false, false) }
