@@ -61,3 +61,15 @@ Build Rockstream 2 **step by step** from one executable vertical slice. Each mec
 | **G6** | Production release | Sustained soaks, DR restore drills, upgrades, v1 migration |
 
 The project uses the [Apache-2.0 license](LICENSE). Migration from Rockstream v1 is an explicit, verified logical-replay workflow rather than implicit on-disk compatibility.
+
+### G0.1 fast checks (in progress)
+
+With Rust 1.100.0, Python 3, PostgreSQL 17 and `psql` installed, start a
+local PostgreSQL instance and set the usual `PGHOST`, `PGPORT`, `PGUSER` and
+`PGPASSWORD` variables for a disposable test database. Run
+`scripts/check-fast.sh`. The check creates only temporary tables in database
+`postgres`. It checks formatting, clippy, Rust batch results, dependency and
+cross-term negative controls, and the PostgreSQL W1-G cuts. This is not G0
+qualification; CI timing, independent review and donor inventory remain open. The dependency
+policy checks the complete resolved graph for paths between workspace crates,
+including paths through external dependencies.

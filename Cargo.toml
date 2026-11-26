@@ -1,0 +1,3 @@
+[workspace]
+resolver = "2"
+members = ["crates/w1g-oracle"]
