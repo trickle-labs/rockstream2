@@ -6,7 +6,7 @@
 
 An earlier draft piled ten G0 packages, dual full runtime prototypes, three attempt-isolation mechanisms, 1,000-view sharing benchmarks, full zero-process hibernation, and a FoundationDB-style cluster simulator onto G0 *before writing G1*. It also created irreconcilable physical contradictions (demanding two synchronous S3 root GETs per warm read while targeting 5 ms latency, and forbidding intra-batch composition while putting shared tenant quotas in one S3 root).
 
-Building the ultimate cloud-native IVM requires **proving the existential physics with bounded probes**, then shipping clean incremental vertical slices.
+Building a reliable, economical cloud-native IVM database requires **proving the existential physics with bounded probes**, then shipping clean incremental vertical slices.
 
 ## Decisions
 

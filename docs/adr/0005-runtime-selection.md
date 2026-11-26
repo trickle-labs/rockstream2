@@ -8,17 +8,17 @@ Build a **lean Rockstream-native Rust runtime** over weighted Apache Arrow batch
 
 ### Staged execution complexity (build step by step)
 
-1. **G0.4–G3a (Acyclic, scalar-epoch, single-interval kernel):** Constrain the initial runtime to acyclic computation graphs, scalar domain epochs, weighted Arrow batches, Rockstream-owned checked widened numeric accumulators, deterministic error semantics, explicit prepare/publish boundaries, and **one active maintenance interval per publication domain** (with operator/partition parallelism inside the interval and concurrency across independent domains).
-2. **G3b–G4 (Bounded single-depth pipelining):** Once single-interval correctness and recovery are proven, overlap compute for interval `k+1` against durable S3 staging/publication of interval `k` (bounded to depth 1, holding `k+1`'s tentative state in memory and invalidating `k+1` if `k` aborts) so single-domain cloud freshness is not serialized behind object-store flush latency.
+1. **G0.4–G3a (Acyclic, scalar-epoch, single-interval kernel):** Constrain the initial runtime to acyclic computation graphs, scalar domain epochs, weighted Arrow batches, Rockstream-owned checked widened numeric accumulators, deterministic error semantics, explicit prepare/publish boundaries, and **one active maintenance interval per publication group** (with operator/partition parallelism inside the interval and concurrency across independent groups).
+2. **G3b–G4 (Evidence-triggered bounded single-depth pipelining):** Once single-interval correctness and recovery are proven, activate bounded single-depth pipelining (`P3.9`) only if measured single-interval freshness is I/O-bound—overlapping compute for interval `k+1` against durable S3 staging/publication of interval `k` (bounded to depth 1, naming `k` as `expected_parent`, counting `k+1` in peak memory reservations, discarding `k+1` immediately if `k` aborts or quarantines, and draining to depth 0 before isolation cutover or reassignment).
 3. **G5 (Advanced execution):** General recursion, nested iteration time, and multi-step speculation remain separately gated capabilities.
 
 ### Practical G0 selection rule (avoid building two engines upfront)
 
 Building two full comparable runtimes (native *and* Timely/Differential) before G1 slows delivery without proportional risk reduction—especially while the initial kernel is strictly acyclic and scalar-epoch, where Timely's multidimensional progress tracker provides minimal advantage and substantial adapter friction against object-store checkpoints and suspension.
 
-Instead, **G0.4 builds and evaluates the minimal native kernel on `W1-G`** against predeclared correctness, resource-bound, and complexity criteria:
-- **Keep native** if it passes exact independent-oracle parity, handles retractions/both-side join updates/empty initialization cleanly, enforces bounded queues/memory, and keeps progress/lifecycle code small and maintainable.
-- **Trigger Timely/Differential or Feldera/DBSP component evaluation** if the native kernel hits a concrete complexity, progress-accounting, or performance wall in G0.4—or later in G5 if general recursive/nested-iteration workloads prove uneconomical to build natively.
+Instead, **G0.4 builds and evaluates the minimal native kernel on `W1-G`** against predeclared correctness, resource-bound, and complexity criteria ([qualification](../planning/qualification.md#g0-feasibility-decisions)):
+- **Keep native** if within the ~2-week Foundation timebox it passes exact independent-oracle parity on `W1-G` (including `Q(empty)`, retractions, and simultaneous both-side join updates), enforces explicit memory/queue bounds, and expresses acyclic scalar-epoch progress and single-owner operator state cleanly without ad hoc synchronization or cross-interval state leakage.
+- **Trigger a single bounded Timely/Differential or Feldera/DBSP prototype on `W1-G`** only if the native kernel hits either of those predeclared walls in G0.4—or later in G5 if general recursive/nested-iteration workloads prove uneconomical to build natively.
 
 Keep the semantic IR, logical time, and durable storage/publication contracts decoupled from runtime scheduling so an evidence-triggered runtime substitution never forces rewriting the compiler or storage protocol.
 
