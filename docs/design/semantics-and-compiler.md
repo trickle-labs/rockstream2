@@ -1,6 +1,6 @@
 # Semantics, incremental algebra, and compilation
 
-**Status:** proposed design; no Rockstream 2 engine or SQL capability is implemented by this documentation PR. **Date:** 2026-11-25. Read [DESIGN.md](../../DESIGN.md) first and [SQL and API contracts](../reference/sql-and-apis.md) for the proposed public surface. The G0–G6 labels refer to the [implementation gates](../planning/implementation-plan.md), not release promises. G5 is an advanced capability track: each feature must qualify independently and need not block G6 production qualification of a smaller surface.
+**Status:** proposed design; no Rockstream 2 engine or SQL capability is implemented by this documentation PR. **Date:** 2026-11-26. Read [DESIGN.md](../../DESIGN.md) first and [SQL and API contracts](../reference/sql-and-apis.md) for the proposed public surface. The G0–G6 labels refer to the [implementation gates](../planning/implementation-plan.md), not release promises. G5 is an advanced capability track: each feature must qualify independently and need not block G6 production qualification of a smaller surface.
 
 ## 1. The semantic contract
 
@@ -30,8 +30,10 @@ An input transaction supplies an atomic set of changes. Intermediate retractions
 
 ### Logical MVCC and bounded batching
 
+**Stage:** G2/G3a retain latest, pinned and a bounded recent set of published versions and promise published interval-boundary cuts. Full arbitrary-cut coverage `[S_hot, Cp]` is introduced at G3b ([ADR 0012](../adr/0012-staged-mechanism-adoption.md)).
+
 Maintained relations and shared arrangements expose retained logical cuts independently of physical checkpoints. Let `S` be the inclusive earliest supported cut and `S_hot` the earliest fine-grained cut (`S <= S_hot <= Cp`):
-- In the **hot fine-grained window `[S_hot, Cp]`**, exact immutable delta segments support every logical cut `C` (including intermediate nonlinear results for `DISTINCT`, `MIN`/`MAX`, and outer joins):
+- In the **hot fine-grained window `[S_hot, Cp]` at G3b**, exact immutable delta segments support every logical cut `C` (including intermediate nonlinear results for `DISTINCT`, `MIN`/`MAX`, and outer joins):
 
 ```text
 R@C = R@S_hot + Σ_(S_hot <= e < C) ΔR_e, for S_hot <= C <= Cp
@@ -39,7 +41,7 @@ R@C = R@S_hot + Σ_(S_hot <= e < C) ΔR_e, for S_hot <= C <= Cp
 
 - In **longer retention `[S, S_hot)`**, periodic consolidated checkpoint bases (or explicitly budgeted archived deltas) bound state growth so hot keys do not accumulate unbounded uncoalesced per-epoch versions inside an LSM tree.
 
-Empty changes still carry progress and lineage. A published descriptor declares exact coverage; missing or expired cuts always return explicit errors rather than falling back to newer data. Consolidating across epochs is legal only below `S_hot` when no active pin or promised intermediate cut requires them.
+Empty changes still carry progress and lineage. A published descriptor declares exact coverage; G2/G3a descriptors declare supported interval-boundary cuts, while G3b may advertise arbitrary cuts in its qualified hot window. Missing or expired cuts always return explicit errors rather than falling back to newer data. Consolidating across epochs is legal only below `S_hot` when no active pin or promised intermediate cut requires them.
 
 ## 2. SQL meaning belongs to Rockstream
 

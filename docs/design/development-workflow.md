@@ -1,6 +1,6 @@
 # Development workflow and CI strategy
 
-**Status:** Proposed, 2026-11-25. These are initial delivery objectives and policies, not measured build times or configured workflows. The implementation begins with G0. See [testing and verification](testing-and-verification.md) for the test pyramid and [qualification](../planning/qualification.md) for release gates.
+**Status:** Proposed, 2026-11-26. These are initial delivery objectives and policies, not measured build times or configured workflows. The implementation begins with G0. The [implementation plan](../planning/implementation-plan.md) is the single roadmap authority; G0 foundation unlocks G1 while G0 durability physics runs in parallel and unlocks G2. See [testing and verification](testing-and-verification.md) for the test pyramid and [qualification](../planning/qualification.md) for release gates.
 
 ## 1. Fast and safe delivery
 
