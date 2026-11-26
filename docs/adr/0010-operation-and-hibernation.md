@@ -23,7 +23,7 @@ Before entering `Dormant`: serialize admissions/wake requests against the transi
 | --- | --- |
 | Scheduled/intermittent views, dev/staging, replayable Kafka with long retention | Full zero-process hibernation (Object-Native profile) |
 | Continuous PostgreSQL CDC (holding WAL slots), active Kafka sinks, durable timers | Partial suspension (stateless maintenance/serving scale to zero; ingester/sink stays active) |
-| Low-latency interactive read models (≤100 ms freshness, high-rate strict reads) | Low-Latency Cloud profile (Embedded Raft voters resident; stateless workers elastic) |
+| Low-latency interactive read models (`<10 ms` strict-latest reads; or `≤100 ms` P99 freshness with optional fast WAL tier) | Low-Latency Cloud profile (Embedded OpenRaft voters resident with durable voter disks; stateless workers elastic) |
 
 ## Alternatives and consequences
 
@@ -32,4 +32,4 @@ Before entering `Dormant`: serialize admissions/wake requests against the transi
 
 ## Evidence
 
-G2 qualifies single-process durable stop/restart from object storage with empty local caches; G3 accounts for shared consumer cursors; G4 qualifies distributed drain, concurrent activation, and stale-owner fencing; G6 qualifies runbooks and measured active/idle economics. [Runtime and operations](../design/runtime-and-operations.md) defines the detailed lifecycle.
+G2 qualifies single-process durable stop/restart from object storage with empty local caches; G3b accounts for shared consumer cursors; G4 qualifies distributed drain, concurrent activation, and stale-owner fencing; G6 qualifies runbooks and measured active/idle economics. [Runtime and operations](../design/runtime-and-operations.md) defines the detailed lifecycle.
