@@ -4,7 +4,7 @@ This repository is currently an architecture and implementation plan, not an imp
 
 Autonomous coding agents are the primary implementers. Read [DESIGN.md](DESIGN.md), [RockStyle](ROCK_STYLE.md), the owning design spec, and [implementation start](docs/planning/implementation-start.md) before changing code or contracts.
 
-- **Build incrementally:** Follow the step-by-step gate sequence (`G0 → G1 → G2 → G3 → G4 → G6`, with `G5` independent). Use the canonical `W1-G` golden fixture as the shared executable target. Never build speculative abstractions or later-gate features ahead of their prerequisites.
+- **Build incrementally:** Follow the step-by-step gate sequence (`G0 → G1 → G2 → G3a → G3b → G4 → G6`, with `G5` independent). Use the canonical `W1-G` golden fixture as the shared executable target. Never build speculative abstractions or later-gate features ahead of their prerequisites.
 - **Branch isolation:** Claim one ready issue on an isolated branch/worktree based on current `main`. Respect WIP limits. Never write directly to `main` or duplicate another owner's work.
 - **Autonomy and escalation:** Work autonomously within approved contracts. Escalate conflicting/missing invariants, architectural/security/compatibility changes, or privileged operations with evidence and a concrete recommendation. Never self-approve, bypass required checks, weaken assertions, or alter review authority.
 - **RockStyle engineering:** Use distinct domain types, checked arithmetic, release-enabled checks on safety-critical internal invariants, explicit resource bounds with exhaustion actions, and clear separation between internal invariant violations and expected external errors.

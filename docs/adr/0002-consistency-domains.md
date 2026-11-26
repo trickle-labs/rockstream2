@@ -8,13 +8,13 @@ A global progress barrier couples unrelated workloads. Removing it without anoth
 
 ## Decision
 
-Use scalar ordered epochs within a consistency domain. A cut `C` contains epochs `e < C`; computed and durable published uppers are separate. Preserve complete source transactions in an ingestion domain. Every result domain has **one atomic publication group**, and multiple result domains can consume the same durable input/history at different rates. Views requiring joint atomic publication belong to one group; a slow required participant still delays that group. The optimizer cannot silently change its boundary.
+Use scalar ordered epochs within a consistency domain. A cut `C` contains epochs `e < C`; computed and durable published uppers are separate. Preserve complete source transactions in an ingestion domain. Every result domain has **one atomic publication group**, and multiple result domains can consume the same durable input/history at different rates. By default from G2 onward, each independent materialized view receives its own lightweight result publication head (so a runtime error in one view quarantines only that view), while views requiring joint atomic visibility are placed into one explicitly named **atomic publication group** (`WITH (publication_group = '...')`); a slow or failing required participant halts its group. The optimizer cannot silently change this boundary.
 
 Sharing an arrangement does not merge publication groups. Consumers keep independent cursors, maintenance schedules and retention obligations. Certified retained history reconstructs exact logical cuts even if physical checkpoints occur at different times. Missing history, unsupported cuts and quota exhaustion have explicit wait, failure or resnapshot outcomes; sharing cannot promise unlimited free retention.
 
 Cross-domain dependencies use versioned imports. Selected inputs must agree on the complete boundary for every overlapping source incarnation and satisfy transaction/import dependency closure. Every advertised logical cut has a protected mapping to that lineage and its applicable schema/semantics. Unrelated sources have no inferred global transaction guarantee. Numeric epochs in different domains are never compared.
 
-G2 uses one domain. G3 qualifies independent local consuming result domains over common input/history. G4 adds distributed groups and general cross-domain imports. Domain merging/splitting, cross-domain atomic writes and arbitrary recursive import cycles are separate work.
+G2 uses one ingestion domain with per-view or explicitly grouped publication heads. G3b qualifies shared arrangements and independent scheduling across local consuming result domains over common input/history. G4 adds distributed groups and general cross-domain imports. Domain merging/splitting, cross-domain atomic writes and arbitrary recursive import cycles are separate work.
 
 ## Alternatives and consequences
 

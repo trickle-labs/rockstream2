@@ -8,8 +8,8 @@ Build a **lean Rockstream-native Rust runtime** over weighted Apache Arrow batch
 
 ### Staged execution complexity (build step by step)
 
-1. **G0.4–G2 (Acyclic, scalar-epoch, single-interval kernel):** Constrain the initial runtime to acyclic computation graphs, scalar domain epochs, weighted Arrow batches, deterministic error semantics, explicit prepare/publish boundaries, and **one active maintenance interval per publication domain** (with operator/partition parallelism inside the interval and concurrency across independent domains).
-2. **G3–G4 (Bounded single-depth pipelining):** Once single-interval correctness and recovery are proven, overlap compute for interval `k+1` against durable S3 staging/publication of interval `k` (bounded to depth 1, with exact-parent invalidation if `k` aborts) so single-domain cloud freshness is not serialized behind object-store flush latency.
+1. **G0.4–G3a (Acyclic, scalar-epoch, single-interval kernel):** Constrain the initial runtime to acyclic computation graphs, scalar domain epochs, weighted Arrow batches, Rockstream-owned checked widened numeric accumulators, deterministic error semantics, explicit prepare/publish boundaries, and **one active maintenance interval per publication domain** (with operator/partition parallelism inside the interval and concurrency across independent domains).
+2. **G3b–G4 (Bounded single-depth pipelining):** Once single-interval correctness and recovery are proven, overlap compute for interval `k+1` against durable S3 staging/publication of interval `k` (bounded to depth 1, holding `k+1`'s tentative state in memory and invalidating `k+1` if `k` aborts) so single-domain cloud freshness is not serialized behind object-store flush latency.
 3. **G5 (Advanced execution):** General recursion, nested iteration time, and multi-step speculation remain separately gated capabilities.
 
 ### Practical G0 selection rule (avoid building two engines upfront)

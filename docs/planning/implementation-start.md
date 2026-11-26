@@ -5,10 +5,10 @@
 ## 1. The smallest exceptional Rockstream
 
 Focus on a narrow, rock-solid SQL-first streaming database that maintains exact durable results, operates from one binary with zero external coordination dependencies, and delivers fast warm reads. Build **step by step**:
-1. **G0 (2–4 weeks):** Prove existential storage/metadata physics on real object storage, write one concise Quint protocol model, bootstrap fast CI, and lock `W1-G` + native kernel direction.
-2. **G1:** Pure in-memory semantic kernel with independent PostgreSQL/batch oracle verification.
-3. **G2:** Single-node durable MVP—one binary, 5-minute local quickstart, standard `pgwire` clients, single-node S3 durability, crash recovery, and lease-backed warm reads.
-4. **G3 → G4 → G6:** Shared arrangements + live CDC/Kafka connectors + eligible F-IVM (G3); multi-node cloud + optional Embedded Raft low-latency tier (G4); production qualification & v1 migration (G6). `G5` advanced features graduate independently.
+1. **G0 (2–4 weeks):** Prove existential storage/metadata/overlay physics on real object storage, write one concise Quint protocol model, bootstrap fast CI, and lock `W1-G` + native kernel direction.
+2. **G1:** Pure in-memory semantic kernel with independent PostgreSQL/batch oracle verification (`COUNT`/`SUM`/`AVG`, inner equi-joins, checked widened numeric accumulators, `Q(empty)`).
+3. **G2:** Single-node durable MVP—one binary, 5-minute local quickstart, standard `pgwire` clients, single-node S3 durability, crash recovery, view-level fault quarantine, and monotonic lease-backed warm reads.
+4. **G3a → G3b → G4 → G6:** Table-stakes SQL (`LEFT OUTER JOIN`, `DISTINCT`, semi/anti joins, delete-safe `MIN`/`MAX`) + live PostgreSQL CDC (with benign additive-DDL tolerance) + Kafka + subscriptions (**G3a**); shared arrangements + bounded logical MVCC + rule-based isolation + eligible F-IVM (**G3b**); multi-node cloud + cache-affinity serving + optional Embedded OpenRaft low-latency profile (**G4**); production qualification & v1 migration (**G6**). `G5` advanced features graduate independently.
 
 Engage design partners continuously from G0 onward to prioritize real query shapes and profiles without blocking G0/G1 execution.
 
@@ -55,11 +55,12 @@ Epochs 1 and 2 change both join inputs in one transaction, exercising join cross
 
 | Gate | `W1-G` progression |
 | --- | --- |
-| G0 | Frozen inputs/expected cuts, independent PostgreSQL/batch oracle, S3/SlateDB physics probe, minimal native kernel |
-| G1 | Exact incremental operators, SQL binding, retractions, decimal/NULL laws, property tests |
-| G2 | End-to-end `pgwire`, durable local + single-node S3, lease-backed fast reads, crash recovery, 5-minute quickstart |
-| G3 | Shared arrangements across overlapping views, independent consumer schedules, live PostgreSQL CDC, eligible F-IVM |
-| G4 | Multi-node execution, fenced failover, independent serving pools, optional Embedded Raft low-latency profile |
+| G0 | Frozen inputs/expected cuts, independent PostgreSQL/batch oracle, S3/SlateDB/overlay physics probe, minimal native kernel |
+| G1 | Exact incremental operators (`COUNT`/`SUM`/`AVG`, inner joins), SQL binding, retractions, checked widened decimal/NULL laws, property tests |
+| G2 | End-to-end `pgwire`, durable local + single-node S3, bounded delta overlay, lease-backed fast reads, view quarantine, crash recovery, 5-minute quickstart |
+| G3a | Table-stakes SQL (`LEFT OUTER JOIN`, `DISTINCT`, semi/anti joins, delete-safe `MIN`/`MAX`), online lifecycle, live PG CDC (additive-DDL tolerant), Kafka, subscriptions |
+| G3b | Shared arrangements across overlapping views, independent consumer schedules, rule-based isolation, bounded single-depth pipelining, eligible F-IVM |
+| G4 | Multi-node execution, fenced failover, cache-affinity serving pools, optional Embedded OpenRaft low-latency profile |
 | G6 | 72-hour soak, DR restore drills, rolling upgrades, audited SLO/cost evidence, v1 migration |
 
 ## 3. Lean G0: four kill-switch deliverables (2–4 weeks)
@@ -69,8 +70,8 @@ Do **not** build two full engines, 1,000-view benchmarks, full hibernation, or a
 | Deliverable | Scope & concrete output | Exit / fallback trigger |
 | --- | --- | --- |
 | **G0.1** Bootstrap, CI & `W1-G` Oracle | Minimal Rust workspace (`Cargo.toml`, pinned toolchain), one-command local/CI fast check (<5 min), crate dependency-direction negative control, frozen `W1-G` fixture + independent PostgreSQL/batch oracle, deliberately broken cross-term negative control, and Rockstream v1 donor disposition register | Clean CI pass + proven negative controls; ready for G1 |
-| **G0.2** Storage & Metadata Physics Probe | On real S3/object storage: (a) single-key conditional `PUT` (`If-Match`) with **compositional intra-batch serialization** under single-tenant shared-quota and same-domain load; (b) **immutable-delta + per-domain SlateDB working index** vs. pure SlateDB history on `W1-G` (exact-parent reopen after `SIGKILL`, checkpoint amortization, nonlinear cuts, grace-window GC reclamation); (c) warm lease-backed (<5 ms target) vs. strict-latest read latency | Lock **one** storage layout and record honest Object-Native latency/cost envelope; if single-key S3 latency is unacceptable for target workloads, schedule Embedded OpenRaft earlier |
-| **G0.3** Core Protocol Model (Quint) | One concise **Quint** spec modeling publication atomicity, ownership fencing, compositional batch outcomes (including lost CAS response after later root advance), and conservative grace-window (`Δ_gc_grace >> Δ_read_lease`) GC safety, with deliberate negative controls | Zero invariant violations within bounds; all negative controls caught |
+| **G0.2** Storage & Metadata Physics Probe | On real S3/object storage: (a) single-key conditional `PUT` (`If-Match`) + **compositional intra-batch serialization** under single-tenant shared-quota and same-domain load (with pre-allocated owner namespaces); (b) **immutable-delta + per-domain SlateDB working index + bounded delta overlay** vs. pure SlateDB history on `W1-G` (separate-reader point lookup at `Cp` and `C ∈ [S_hot, Cp]`, exact-parent reopen after `SIGKILL`, Direct-DML PK index recovery, checkpoint amortization, nonlinear cuts, sweeper-observed grace-window GC deletion); (c) full sequential S3 freshness round trips plus warm lease-backed (`<5 ms` target) vs. strict-latest read latency | Lock **one** storage layout and record honest Object-Native latency/cost envelope; if single-key S3 latency is unacceptable for target workloads, schedule Embedded OpenRaft earlier (and note whether a cross-AZ fast WAL tier is needed for `≤100 ms` P99 freshness) |
+| **G0.3** Core Protocol Model (Quint) | One concise **Quint** spec modeling publication atomicity, pre-allocated owner-generation fencing, compositional batch outcomes (including lost CAS response after later root advance), and monotonic-lease + sweeper-observed grace-window (`Δ_gc_grace >> Δ_read_lease`) GC safety (including VM pauses), with deliberate negative controls | Zero invariant violations within bounds; all negative controls caught |
 | **G0.4** Native Kernel Spike | Acyclic scalar-epoch weighted Arrow batch kernel executing `W1-G` against the G0.1 independent oracle with explicit memory/queue bounds | Confirm native kernel ergonomics and complexity; **only** prototype Timely/Differential if native hits a concrete predeclared complexity or correctness wall |
 
 ## 4. Start with three parallel lanes (WIP ≤ 3)
