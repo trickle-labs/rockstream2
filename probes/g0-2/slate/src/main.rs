@@ -9,6 +9,29 @@ use std::{
     sync::Arc,
 };
 
+struct Overlay {
+    deltas: Vec<Vec<u8>>,
+    byte_cap: usize,
+    count_cap: usize,
+}
+
+impl Overlay {
+    fn admit(&mut self, delta: &[u8]) -> Result<(), &'static str> {
+        let used = self
+            .deltas
+            .iter()
+            .try_fold(0usize, |total, item| total.checked_add(item.len()))
+            .ok_or("overlay overflow")?;
+        if self.deltas.len() >= self.count_cap
+            || used.checked_add(delta.len()).ok_or("overlay overflow")? > self.byte_cap
+        {
+            return Err("overlay cap");
+        }
+        self.deltas.push(delta.to_vec());
+        Ok(())
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = std::env::args().collect();
@@ -101,12 +124,34 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         assert_eq!(db.get(b"count").await?.as_deref(), Some(b"1".as_slice()));
         if mode == "checkpoint" {
+            let mut overlay = Overlay {
+                deltas: Vec::new(),
+                byte_cap: update.len(),
+                count_cap: 1,
+            };
+            assert_eq!(overlay.admit(b"12"), Err("overlay cap"));
+            overlay.admit(&update)?;
+            assert_eq!(overlay.admit(&update), Err("overlay cap"));
+            assert_eq!(overlay.admit(b""), Err("overlay cap"));
             let checkpoint = db
                 .create_checkpoint(CheckpointScope::All, &CheckpointOptions::default())
                 .await?;
             let registered = format!("{root_text}:{}", checkpoint.id);
             let options: slatedb::object_store::PutOptions =
                 slatedb::object_store::PutMode::Update(root_version).into();
+            let stale =
+                slatedb::object_store::PutMode::Update(slatedb::object_store::UpdateVersion {
+                    e_tag: Some("\"not-the-root-version\"".to_owned()),
+                    version: None,
+                })
+                .into();
+            assert!(matches!(
+                store
+                    .put_opts(&root, registered.clone().into(), stale)
+                    .await,
+                Err(slatedb::object_store::Error::Precondition { .. })
+            ));
+            assert_eq!(overlay.admit(&update), Err("overlay cap"));
             store
                 .put_opts(&root, registered.clone().into(), options.clone())
                 .await?;
@@ -118,6 +163,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 store.get(&root).await?.bytes().await?.as_ref(),
                 registered.as_bytes()
             );
+            overlay.deltas.clear();
+            overlay.admit(&update)?;
             db.close().await?;
             println!("CHECKPOINTED");
         } else if mode == "apply-and-wait" {

@@ -34,6 +34,9 @@ A deliberate recovery mutation ignores the marker and must fail the same
 count assertion. A corrupt referenced delta must fail digest validation. The
 probe also creates a non-expiring checkpoint, conditionally registers its ID in
 the root and checks that a stale root version cannot overwrite the registration.
+One in-memory overlay instance rejects byte- and count-cap exhaustion, stays
+full after a failed registration, and is trimmed only after registration succeeds.
+This is a synthetic admission exercise, not a complete serving overlay.
 For a split update it kills the writer after its first durable chunk and dirty
 marker; a fresh instance replays from the empty initial base, while a negative
 control that reuses the dirty instance fails. This tests one interval and one
@@ -42,7 +45,8 @@ checkpoint.
 
 This smoke test is **not G0.2 qualification**: it does not exercise a real
 provider, ambiguous responses, group commit, W1-G, both SlateDB layouts,
-general mid-apply recovery, checkpoint-based recovery or overlay caps. It cannot select a storage
+general mid-apply recovery, checkpoint-based recovery or an integrated serving
+overlay. It cannot select a storage
 layout or establish cloud latency, cost, or durability. Apply the predeclared
 qualification rubric and budgets separately for the real-provider run.
 
