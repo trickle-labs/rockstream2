@@ -21,7 +21,10 @@ model=$(dirname "$0")/protocol.qnt
 "$quint" verify "$model" --observation 's.prepared and s.abandonedAttempt == 1 and s.attempt == 2 and s.receipts == Set(1, 2) and s.receipt1Attempt == 1 and s.receipt2Attempt == 2' --max-steps 8 --verbosity 0
 "$quint" verify "$model" --observation 's.prepared and s.receipts == Set(1) and s.receipt1Attempt == s.attempt' --max-steps 8 --verbosity 0
 
-"$quint" verify "$model" --no-invariant --step bad_seal_step --observation 's.prepared and s.sealed and s.receipt1Id == 3 and s.sealedReceipt1 != 3' --max-steps 8 --verbosity 0
+"$quint" verify "$model" --no-invariant --step bad_seal_step --observation 's.badSealCommit and s.sealed and s.receipt1Id == 3 and s.sealedReceipt1 != 3' --max-steps 8 --verbosity 0
+
+"$quint" verify "$model" --no-invariant --step bad_missing_step --observation 's.badPublication and not(s.badSealCommit) and s.receipts == Set(1)' --max-steps 8 --verbosity 0
+"$quint" verify "$model" --no-invariant --step bad_mixed_step --observation 's.badPublication and not(s.badSealCommit) and s.abandonedAttempt == 1 and s.receipt1Attempt == 1 and s.receipt2Attempt == 2' --max-steps 8 --verbosity 0
 
 for control in publication:bad_publication_step publication:bad_seal_step publication:bad_atomic_step publication:bad_foreign_step publication:bad_mixed_step publication:bad_missing_step publication:bad_parent_step publication:bad_revision_step fencing_and_outcomes:bad_reuse_step fencing_and_outcomes:bad_refresh_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_pin_step gc:bad_retire_step gc:bad_resurrection_step gc:bad_publish_retired_step; do
   invariant=${control%%:*}

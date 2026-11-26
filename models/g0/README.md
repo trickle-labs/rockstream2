@@ -20,8 +20,10 @@ one object and pin. A monotonic allocator issues at most two attempt IDs
 without reuse. Partitions arrive independently, each with its own attempt ID; duplicates are
 represented separately. A receive transition may deliver a receipt for an
 abandoned attempt. Witnesses cover missing partitions and mixed-attempt receipt
-sets, and separate mutants attempt to publish each invalid case. Another mutant
-changes one receipt identity after sealing and bypasses the seal comparison.
+sets. Coverage mutants bypass receipt validation at sealing and publication
+while retaining the seal-integrity comparison; witnesses require the invalid
+receipt set to be published with an intact seal. Another mutant changes one
+receipt identity after sealing and commits it by bypassing the seal comparison.
 Negative controls allow missing/foreign receipts, partial visibility, a stale root or publication parent, a refresh
 that adopts a new owner generation, stale ownership, a repeated effect,
 a response using the current root, stale pin or retire commits after the

@@ -2,7 +2,7 @@
 module protocol {
   type State = {
     head: int, publicationHead: int, generation: int, prepared: bool, parent: int, revision: int, owner: int, preparedGeneration: int, refreshed: bool,
-    receipts: Set[int], duplicate: bool, attempt: int, lastAttempt: int, abandonedAttempt: int, receipt1Attempt: int, receipt2Attempt: int, receipt1Id: int, receipt2Id: int, sealed: bool, sealedAttempt: int, sealedParent: int, sealedOwner: int, sealedReceipt1: int, sealedReceipt2: int, op: int, done1: bool, done2: bool, metadataDone: bool, effects1: int, publications: int, visible1: bool, visible2: bool,
+    receipts: Set[int], duplicate: bool, attempt: int, lastAttempt: int, abandonedAttempt: int, receipt1Attempt: int, receipt2Attempt: int, receipt1Id: int, receipt2Id: int, sealed: bool, sealedAttempt: int, sealedParent: int, sealedOwner: int, sealedReceipt1: int, sealedReceipt2: int, sealedReceipts: Set[int], sealedDuplicate: bool, sealedReceipt1Attempt: int, sealedReceipt2Attempt: int, op: int, done1: bool, done2: bool, metadataDone: bool, effects1: int, publications: int, visible1: bool, visible2: bool,
     response1: bool, outcome1: int, reply1: int, pinned: bool, pinPending: bool, pinRevision: int, retirePending: bool, retireRevision: int, root: bool, retired: bool, deleted: bool, age: int,
     stalePublished: bool, badSealCommit: bool, badPublication: bool, badParent: bool, badFence: bool, badGc: bool
   }
@@ -10,7 +10,7 @@ module protocol {
 
   action init = s' = {
     head: 0, publicationHead: 0, generation: 0, prepared: false, parent: 0, revision: 0, owner: 0, preparedGeneration: 0, refreshed: false,
-    receipts: Set(), duplicate: false, attempt: 0, lastAttempt: 0, abandonedAttempt: 0, receipt1Attempt: 0, receipt2Attempt: 0, receipt1Id: 0, receipt2Id: 0, sealed: false, sealedAttempt: 0, sealedParent: 0, sealedOwner: 0, sealedReceipt1: 0, sealedReceipt2: 0, op: 1, done1: false, done2: false, metadataDone: false, effects1: 0, publications: 0, visible1: false, visible2: false,
+    receipts: Set(), duplicate: false, attempt: 0, lastAttempt: 0, abandonedAttempt: 0, receipt1Attempt: 0, receipt2Attempt: 0, receipt1Id: 0, receipt2Id: 0, sealed: false, sealedAttempt: 0, sealedParent: 0, sealedOwner: 0, sealedReceipt1: 0, sealedReceipt2: 0, sealedReceipts: Set(), sealedDuplicate: false, sealedReceipt1Attempt: 0, sealedReceipt2Attempt: 0, op: 1, done1: false, done2: false, metadataDone: false, effects1: 0, publications: 0, visible1: false, visible2: false,
     response1: false, outcome1: 0, reply1: 0, pinned: false, pinPending: false, pinRevision: 0, retirePending: false, retireRevision: 0, root: true, retired: false, deleted: false, age: 0,
     stalePublished: false, badSealCommit: false, badPublication: false, badParent: false, badFence: false, badGc: false
   }
@@ -44,14 +44,19 @@ module protocol {
 
   val sealMatches = s.sealed and s.sealedAttempt == s.attempt and
     s.sealedParent == s.parent and s.sealedOwner == s.owner and
-    s.sealedReceipt1 == s.receipt1Id and s.sealedReceipt2 == s.receipt2Id
+    s.sealedReceipt1 == s.receipt1Id and s.sealedReceipt2 == s.receipt2Id and
+    s.sealedReceipts == s.receipts and s.sealedDuplicate == s.duplicate and
+    s.sealedReceipt1Attempt == s.receipt1Attempt and s.sealedReceipt2Attempt == s.receipt2Attempt
 
-  action seal = all {
-    s.prepared, not(s.sealed), s.receipts == Set(1, 2), not(s.duplicate),
-    s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt,
+  action seal(badReceipts) = all {
+    s.prepared, not(s.sealed),
+    (s.receipts == Set(1, 2) and not(s.duplicate) and
+      s.receipt1Attempt == s.attempt and s.receipt2Attempt == s.attempt) or badReceipts,
     s' = s.with("sealed", true).with("sealedAttempt", s.attempt)
       .with("sealedParent", s.parent).with("sealedOwner", s.owner)
       .with("sealedReceipt1", s.receipt1Id).with("sealedReceipt2", s.receipt2Id)
+      .with("sealedReceipts", s.receipts).with("sealedDuplicate", s.duplicate)
+      .with("sealedReceipt1Attempt", s.receipt1Attempt).with("sealedReceipt2Attempt", s.receipt2Attempt)
   }
 
   // The two expected partition receipts are bound to this prepared attempt.
@@ -59,7 +64,7 @@ module protocol {
     s.prepared,
     s.parent == s.publicationHead or ignoreParent,
     s.revision == s.head or ignoreRevision,
-    sealMatches or ignoreSeal or badReceipts,
+    sealMatches or ignoreSeal,
     (s.receipts == Set(1, 2) and not(s.duplicate) and s.receipt1Attempt == s.attempt and s.receipt2Attempt == s.attempt) or badReceipts,
     s.owner == s.generation or badOwner,
     (s.op == 1 and (not(s.done1) or badRetry)) or (s.op == 2 and not(s.done2)),
@@ -129,18 +134,18 @@ module protocol {
     s' = s.with("deleted", true)
   }
 
-  action step = any { prepare(false), receive, seal, publish(false, false, false, false, false, false, false, false), abandon, reassign,
+  action step = any { prepare(false), receive, seal(false), publish(false, false, false, false, false, false, false, false), abandon, reassign,
     reconcile(false), advance, refresh(false), competingPublish, tick, preparePin, prepareRetire, refreshPin, refreshRetire, commitPin(false), commitRetire(false), unpin, releaseRoot, reference(false), collect }
   action tamperReceipt = all { s.prepared, s.sealed, s.receipt1Id != 3, s' = s.with("receipt1Id", 3) }
-  action bad_seal_step = any { step, tamperReceipt, publish(false, false, false, false, false, false, false, true) }
+  action bad_seal_step = any { step, tamperReceipt, all { s.sealed, s.receipt1Id == 3, s.sealedReceipt1 != 3, publish(false, false, false, false, false, false, false, true) } }
   action bad_atomic_step = any { step, publish(false, false, false, false, false, true, false, false) }
   action bad_reuse_step = any { step, prepare(true) }
-  action bad_publication_step = any { step, publish(true, false, false, false, false, false, false, false) }
+  action bad_publication_step = any { step, seal(true), publish(true, false, false, false, false, false, false, false) }
   action bad_fencing_step = any { step, publish(false, true, false, false, false, false, false, false) }
   action bad_retry_step = any { step, publish(false, false, true, false, false, false, false, false) }
-  action bad_foreign_step = any { step, all { s.receipts == Set(1, 2), not(s.duplicate), (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), publish(true, false, false, false, false, false, false, false) } }
-  action bad_missing_step = any { step, all { s.receipts == Set(1), s.receipt1Attempt == s.attempt, publish(true, false, false, false, false, false, false, false) } }
-  action bad_mixed_step = any { step, all { s.abandonedAttempt == 1, s.attempt == 2, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, not(s.duplicate), publish(true, false, false, false, false, false, false, false) } }
+  action bad_foreign_step = any { step, all { s.receipts == Set(1, 2), not(s.duplicate), (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), seal(true) }, all { s.receipts == Set(1, 2), not(s.duplicate), (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), publish(true, false, false, false, false, false, false, false) } }
+  action bad_missing_step = any { step, all { s.receipts == Set(1), s.receipt1Attempt == s.attempt, seal(true) }, all { s.receipts == Set(1), s.receipt1Attempt == s.attempt, publish(true, false, false, false, false, false, false, false) } }
+  action bad_mixed_step = any { step, all { s.abandonedAttempt == 1, s.attempt == 2, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, not(s.duplicate), seal(true) }, all { s.abandonedAttempt == 1, s.attempt == 2, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, not(s.duplicate), publish(true, false, false, false, false, false, false, false) } }
   action bad_refresh_step = any { step, refresh(true) }
   action bad_revision_step = any { step, publish(false, false, false, false, false, false, true, false) }
   action bad_parent_step = any { step, publish(false, false, false, true, false, false, false, false) }
