@@ -40,3 +40,11 @@ model evidence, not a proof of the implementation or a G0.3 gate decision.
 The model's documented abstractions, independent review, current integration
 candidate checks and human approval remain required; no storage or runtime
 choice is changed by this observation.
+
+The later G0.3 source commit `9bd35ec0b6cb280b96eea20cdb1eb2c70081224c`
+adds an abstract staged-data and recovery-closure durability fact, receipt
+object identities and staging protection that survives abandonment until close.
+Its [recorded bounded run](../../evidence/g0-3/README.md#staged-durability-model-9bd35ec)
+completed with the stated witnesses and controls. The model still abstracts the
+object graph, namespace acquisition, data bytes and durable storage protocol;
+this observation does not qualify an implementation or approve the G0.3 gate.
