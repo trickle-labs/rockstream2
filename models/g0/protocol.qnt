@@ -47,6 +47,7 @@ module protocol {
   action reassign = all { s.generation == 0, s' = s.with("generation", 1) }
   // A committed response may be lost; retry consults durable outcome, even after head advances.
   action reconcile(wrongHead) = all { s.done1, not(s.response1), s' = s.with("response1", true).with("reply1", if (wrongHead) s.head else s.outcome1) }
+  // An unrelated metadata operation advances the root, not a publication.
   action advance = all { not(s.done2), s.head < 3, s' = s.with("head", s.head + 1).with("done2", true) }
   action tick = all { s.age < 2, s' = s.with("age", s.age + 1) }
   action pin(bad) = all {

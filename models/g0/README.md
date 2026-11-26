@@ -4,7 +4,9 @@
 retirable object, not the production metadata implementation. A successful
 publication is one atomic root transition that checks its expected parent,
 owner generation and complete receipt set. Operation 1 may lose its response;
-its durable outcome survives a later root advance. Pin and retirement compete
+its durable outcome survives a later root advance. The `advance` action is an
+unrelated metadata-root transition, not a publication; publications still pass
+the receipt and owner checks. Pin and retirement compete
 at the same atomic boundary; collection additionally requires abstract age 2.
 
 The bounds are two operation identities, two ownership generations, at most
@@ -32,7 +34,8 @@ success. `QUINT` may name a non-default Quint executable.
 Observed on 2026-11-26: Quint 0.34.0 / Apalache 0.62.4, eight steps; positive
 invariants passed and all eight mutants produced counterexamples. A reachability
 check observes
-operation 1 committed at root 1, operation 2 advanced to root 2, and operation
+operation 1 committed at root 1, an unrelated metadata operation advanced the
+root to 2, and operation
 1 resolved to its stored outcome at root 1 without another effect. This result
 is model-level evidence only. This draft abstracts receipt payloads and attempt identities as a validity flag,
 and models a single root-to-object edge rather than a full metadata tree. It
