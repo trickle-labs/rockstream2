@@ -29,3 +29,14 @@ The mechanism choices in this record remain in force, but their adoption gates a
 - G0 comprises two timeboxed tracks: foundation unlocks G1, and durability physics unlocks G2 in parallel with G1.
 - Every architectural invariant (`INV-01`–`INV-10`) remains intact; none of these simplifications weakens exact SQL semantics, atomic publication, ownership fencing, or GC safety.
 - Unproven claims remain unmeasured until the relevant G0/G4.0 and later gates produce real artifacts. If G0.2 finds conditional writes unavailable or SlateDB index maintenance misses its profile budget, reject the provider/profile or change the layout before full-engine investment; consider OpenRaft only through the evidence gate.
+
+## G0.3 bounded observation (draft)
+
+The Quint model at source commit `f4424cffbc53d0a9513f5b6720b184d51b1ee541`
+was checked through ten steps with recorded witnesses and negative
+controls. The [captured run](../../evidence/g0-3/README.md) identifies the
+model and tool versions and retains raw output and traces. This is bounded
+model evidence, not a proof of the implementation or a G0.3 gate decision.
+The model's documented abstractions, independent review, current integration
+candidate checks and human approval remain required; no storage or runtime
+choice is changed by this observation.
