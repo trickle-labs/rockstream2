@@ -2,17 +2,17 @@
 module protocol {
   type State = {
     head: int, publicationHead: int, generation: int, prepared: bool, parent: int, revision: int, owner: int, preparedGeneration: int, refreshed: bool,
-    receipts: Set[int], duplicate: bool, attempt: int, lastAttempt: int, abandonedAttempt: int, receipt1Attempt: int, receipt2Attempt: int, op: int, done1: bool, done2: bool, metadataDone: bool, effects1: int, publications: int, visible1: bool, visible2: bool,
+    receipts: Set[int], duplicate: bool, attempt: int, lastAttempt: int, abandonedAttempt: int, receipt1Attempt: int, receipt2Attempt: int, receipt1Id: int, receipt2Id: int, sealed: bool, sealedAttempt: int, sealedParent: int, sealedOwner: int, sealedReceipt1: int, sealedReceipt2: int, op: int, done1: bool, done2: bool, metadataDone: bool, effects1: int, publications: int, visible1: bool, visible2: bool,
     response1: bool, outcome1: int, reply1: int, pinned: bool, pinPending: bool, pinRevision: int, retirePending: bool, retireRevision: int, root: bool, retired: bool, deleted: bool, age: int,
-    stalePublished: bool, badPublication: bool, badParent: bool, badFence: bool, badGc: bool
+    stalePublished: bool, badSealCommit: bool, badPublication: bool, badParent: bool, badFence: bool, badGc: bool
   }
   var s: State
 
   action init = s' = {
     head: 0, publicationHead: 0, generation: 0, prepared: false, parent: 0, revision: 0, owner: 0, preparedGeneration: 0, refreshed: false,
-    receipts: Set(), duplicate: false, attempt: 0, lastAttempt: 0, abandonedAttempt: 0, receipt1Attempt: 0, receipt2Attempt: 0, op: 1, done1: false, done2: false, metadataDone: false, effects1: 0, publications: 0, visible1: false, visible2: false,
+    receipts: Set(), duplicate: false, attempt: 0, lastAttempt: 0, abandonedAttempt: 0, receipt1Attempt: 0, receipt2Attempt: 0, receipt1Id: 0, receipt2Id: 0, sealed: false, sealedAttempt: 0, sealedParent: 0, sealedOwner: 0, sealedReceipt1: 0, sealedReceipt2: 0, op: 1, done1: false, done2: false, metadataDone: false, effects1: 0, publications: 0, visible1: false, visible2: false,
     response1: false, outcome1: 0, reply1: 0, pinned: false, pinPending: false, pinRevision: 0, retirePending: false, retireRevision: 0, root: true, retired: false, deleted: false, age: 0,
-    stalePublished: false, badPublication: false, badParent: false, badFence: false, badGc: false
+    stalePublished: false, badSealCommit: false, badPublication: false, badParent: false, badFence: false, badGc: false
   }
 
   action prepare(reuse) = {
@@ -22,7 +22,7 @@ module protocol {
       if (reuse) s.lastAttempt > 0 else s.lastAttempt < 2,
       s' = s.with("prepared", true).with("parent", s.publicationHead).with("revision", s.head)
         .with("owner", s.generation).with("preparedGeneration", s.generation).with("refreshed", false).with("receipts", Set()).with("duplicate", false).with("attempt", if (reuse) s.lastAttempt else s.lastAttempt + 1)
-        .with("lastAttempt", if (reuse) s.lastAttempt else s.lastAttempt + 1).with("receipt1Attempt", 0).with("receipt2Attempt", 0).with("op", operation)
+        .with("lastAttempt", if (reuse) s.lastAttempt else s.lastAttempt + 1).with("receipt1Attempt", 0).with("receipt2Attempt", 0).with("receipt1Id", 0).with("receipt2Id", 0).with("sealed", false).with("op", operation)
     }
   }
 
@@ -30,20 +30,36 @@ module protocol {
   action receive = {
     nondet partition = Set(1, 2, 3).oneOf()
     nondet receiptAttempt = Set(1, 2).oneOf()
+    nondet receiptId = Set(1, 2).oneOf()
     all {
-      s.prepared, not(s.duplicate),
+      s.prepared, not(s.sealed), not(s.duplicate),
       s' = s.with("receipts", s.receipts.union(Set(partition)))
         .with("duplicate", s.receipts.contains(partition))
         .with("receipt1Attempt", if (partition == 1 and not(s.receipts.contains(1))) receiptAttempt else s.receipt1Attempt)
         .with("receipt2Attempt", if (partition == 2 and not(s.receipts.contains(2))) receiptAttempt else s.receipt2Attempt)
+        .with("receipt1Id", if (partition == 1 and not(s.receipts.contains(1))) receiptId else s.receipt1Id)
+        .with("receipt2Id", if (partition == 2 and not(s.receipts.contains(2))) receiptId else s.receipt2Id)
     }
   }
 
+  val sealMatches = s.sealed and s.sealedAttempt == s.attempt and
+    s.sealedParent == s.parent and s.sealedOwner == s.owner and
+    s.sealedReceipt1 == s.receipt1Id and s.sealedReceipt2 == s.receipt2Id
+
+  action seal = all {
+    s.prepared, not(s.sealed), s.receipts == Set(1, 2), not(s.duplicate),
+    s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt,
+    s' = s.with("sealed", true).with("sealedAttempt", s.attempt)
+      .with("sealedParent", s.parent).with("sealedOwner", s.owner)
+      .with("sealedReceipt1", s.receipt1Id).with("sealedReceipt2", s.receipt2Id)
+  }
+
   // The two expected partition receipts are bound to this prepared attempt.
-  action publish(badReceipts, badOwner, badRetry, ignoreParent, ignoreRetirement, partial, ignoreRevision) = all {
+  action publish(badReceipts, badOwner, badRetry, ignoreParent, ignoreRetirement, partial, ignoreRevision, ignoreSeal) = all {
     s.prepared,
     s.parent == s.publicationHead or ignoreParent,
     s.revision == s.head or ignoreRevision,
+    sealMatches or ignoreSeal or badReceipts,
     (s.receipts == Set(1, 2) and not(s.duplicate) and s.receipt1Attempt == s.attempt and s.receipt2Attempt == s.attempt) or badReceipts,
     s.owner == s.generation or badOwner,
     (s.op == 1 and (not(s.done1) or badRetry)) or (s.op == 2 and not(s.done2)),
@@ -56,6 +72,7 @@ module protocol {
       .with("publications", s.publications + 1).with("visible1", true).with("visible2", not(partial))
       .with("stalePublished", s.stalePublished or (s.abandonedAttempt != 0 and s.attempt == s.abandonedAttempt and (s.receipt1Attempt == s.abandonedAttempt or s.receipt2Attempt == s.abandonedAttempt)))
       .with("outcome1", if (s.op == 1 and not(s.done1)) s.head + 1 else s.outcome1)
+      .with("badSealCommit", s.badSealCommit or not(sealMatches))
       .with("badParent", s.badParent or s.parent != s.publicationHead or s.revision != s.head)
       .with("badPublication", s.badPublication or s.receipts != Set(1, 2) or s.duplicate or (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt))
       .with("badFence", s.badFence or s.preparedGeneration != s.generation)
@@ -67,6 +84,7 @@ module protocol {
     s.prepared, s.revision != s.head,
     s' = s.with("revision", s.head).with("refreshed", true)
       .with("owner", if (bad) s.generation else s.owner)
+      .with("sealedOwner", if (bad) s.generation else s.sealedOwner)
   }
   // An independent valid publication can invalidate a prepared parent.
   action competingPublish = all {
@@ -111,26 +129,28 @@ module protocol {
     s' = s.with("deleted", true)
   }
 
-  action step = any { prepare(false), receive, publish(false, false, false, false, false, false, false), abandon, reassign,
+  action step = any { prepare(false), receive, seal, publish(false, false, false, false, false, false, false, false), abandon, reassign,
     reconcile(false), advance, refresh(false), competingPublish, tick, preparePin, prepareRetire, refreshPin, refreshRetire, commitPin(false), commitRetire(false), unpin, releaseRoot, reference(false), collect }
-  action bad_atomic_step = any { step, publish(false, false, false, false, false, true, false) }
+  action tamperReceipt = all { s.prepared, s.sealed, s.receipt1Id != 3, s' = s.with("receipt1Id", 3) }
+  action bad_seal_step = any { step, tamperReceipt, publish(false, false, false, false, false, false, false, true) }
+  action bad_atomic_step = any { step, publish(false, false, false, false, false, true, false, false) }
   action bad_reuse_step = any { step, prepare(true) }
-  action bad_publication_step = any { step, publish(true, false, false, false, false, false, false) }
-  action bad_fencing_step = any { step, publish(false, true, false, false, false, false, false) }
-  action bad_retry_step = any { step, publish(false, false, true, false, false, false, false) }
-  action bad_foreign_step = any { step, all { s.receipts == Set(1, 2), not(s.duplicate), (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), publish(true, false, false, false, false, false, false) } }
-  action bad_missing_step = any { step, all { s.receipts == Set(1), s.receipt1Attempt == s.attempt, publish(true, false, false, false, false, false, false) } }
-  action bad_mixed_step = any { step, all { s.abandonedAttempt == 1, s.attempt == 2, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, not(s.duplicate), publish(true, false, false, false, false, false, false) } }
+  action bad_publication_step = any { step, publish(true, false, false, false, false, false, false, false) }
+  action bad_fencing_step = any { step, publish(false, true, false, false, false, false, false, false) }
+  action bad_retry_step = any { step, publish(false, false, true, false, false, false, false, false) }
+  action bad_foreign_step = any { step, all { s.receipts == Set(1, 2), not(s.duplicate), (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), publish(true, false, false, false, false, false, false, false) } }
+  action bad_missing_step = any { step, all { s.receipts == Set(1), s.receipt1Attempt == s.attempt, publish(true, false, false, false, false, false, false, false) } }
+  action bad_mixed_step = any { step, all { s.abandonedAttempt == 1, s.attempt == 2, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, not(s.duplicate), publish(true, false, false, false, false, false, false, false) } }
   action bad_refresh_step = any { step, refresh(true) }
-  action bad_revision_step = any { step, publish(false, false, false, false, false, false, true) }
-  action bad_parent_step = any { step, publish(false, false, false, true, false, false, false) }
+  action bad_revision_step = any { step, publish(false, false, false, false, false, false, true, false) }
+  action bad_parent_step = any { step, publish(false, false, false, true, false, false, false, false) }
   action bad_reply_step = any { step, reconcile(true) }
   action bad_pin_step = any { step, all { s.retired, commitPin(true) } }
   action bad_retire_step = any { step, all { s.pinned, commitRetire(true) } }
-  action bad_publish_retired_step = any { step, publish(false, false, false, false, true, false, false) }
+  action bad_publish_retired_step = any { step, publish(false, false, false, false, true, false, false, false) }
   action bad_resurrection_step = any { step, reference(true) }
 
-  val publication = not(s.badPublication) and not(s.badParent) and
+  val publication = not(s.badSealCommit) and not(s.badPublication) and not(s.badParent) and
     s.visible1 == s.visible2 and (not(s.visible1) or s.publications > 0)
   val fencing_and_outcomes = not(s.stalePublished) and not(s.badFence) and s.effects1 <= 1 and (not(s.response1) or s.reply1 == s.outcome1)
   val gc = (not(s.visible1) or (s.root and not(s.retired) and not(s.deleted))) and not(s.badGc) and not(s.deleted and (s.pinned or s.root)) and not(s.retired and (s.root or s.pinned)) and (not(s.deleted) or s.age >= 2)
