@@ -76,6 +76,14 @@ def slate_recovery(binary):
     kill_at_ready("apply-and-wait", "checkpoint-registration")
     result = recover("checkpoint-registration", "checkpoint")
     expect((result.returncode, result.stdout), (0, b"CHECKPOINTED\n"), f"checkpoint: {result.stderr!r}")
+    for prefix in ("split-good", "split-bad"):
+        kill_at_ready("publish", prefix)
+        kill_at_ready("split-apply", prefix)
+    result = recover("split-good", "takeover")
+    expect((result.returncode, result.stdout), (0, b"RECOVERED\n"), f"split takeover: {result.stderr!r}")
+    mutant = recover("split-bad", "takeover-bad")
+    if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
+        raise AssertionError(f"dirty-instance negative control was not detected: {mutant.stderr!r}")
 
 
 def main():
@@ -86,10 +94,10 @@ def main():
                         "-e", f"MINIO_ROOT_PASSWORD={PASSWORD}", IMAGE, "server", "/data"],
                        check=True, stdout=subprocess.DEVNULL)
         started = True
-        for attempt in range(100):
+        for attempt in range(30):
             try:
                 connection = http.client.HTTPConnection("127.0.0.1", PORT, timeout=1)
-                connection.request("GET", "/minio/health/ready")
+                connection.request("GET", "/minio/health/cluster")
                 response = connection.getresponse()
                 ready = response.status == 200
                 connection.close()
@@ -97,9 +105,9 @@ def main():
                     break
             except OSError:
                 pass
-            time.sleep(0.1)
+            time.sleep(1)
         else:
-            raise RuntimeError("Silo did not become ready within 10 seconds")
+            raise RuntimeError("Silo cluster did not become ready within 30 seconds")
 
         bucket = request("PUT")
         expect(bucket[0], 200, f"create bucket: {bucket[2]!r}")

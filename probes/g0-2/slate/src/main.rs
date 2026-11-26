@@ -60,7 +60,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if format!("{:x}", Sha256::digest(&update)) != parts[2] {
             return Err("delta digest mismatch".into());
         }
-        let db = Db::open(format!("{prefix}/index"), store.clone()).await?;
+        let mut db = Db::open(format!("{prefix}/index"), store.clone()).await?;
+        if mode == "split-apply" {
+            let mut partial = WriteBatch::new();
+            partial.put(b"count", b"1");
+            partial.put(b"_meta/dirty", b"1");
+            db.write(partial).await?.await_durable().await?;
+            println!("READY");
+            io::stdout().flush()?;
+            std::future::pending::<()>().await;
+        }
+        if mode == "takeover" || mode == "takeover-bad" {
+            assert_eq!(
+                db.get(b"_meta/dirty").await?.as_deref(),
+                Some(b"1".as_slice())
+            );
+            if mode == "takeover" {
+                db.close().await?;
+                db = Db::open(format!("{prefix}/takeover-index"), store.clone()).await?;
+            }
+        }
         let applied = db.get(b"_meta/applied_cut").await?;
         let count = db.get(b"count").await?;
         if applied.is_none() || mode == "recover-reapply" {
@@ -105,7 +124,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!("READY");
             io::stdout().flush()?;
             std::future::pending::<()>().await;
-        } else if mode == "recover" || mode == "recover-reapply" {
+        } else if mode == "recover"
+            || mode == "recover-reapply"
+            || mode == "takeover"
+            || mode == "takeover-bad"
+        {
             db.close().await?;
             println!("RECOVERED");
         } else {

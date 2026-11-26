@@ -7,6 +7,9 @@ container bound to loopback, creates a test bucket, and stops the container in a
 `finally` block. Its fixed credentials are only for this temporary local instance;
 it has no option to target a remote endpoint. If the process itself is forcibly
 killed, remove any remaining `rockstream-g0-2-*` container manually.
+Startup waits at most 30 seconds for `/minio/health/cluster`; Silo documents
+that `/minio/health/ready` can succeed before storage or IAM is initialized.
+See https://silo.pgsty.com/compatibility/feature/healthcheck/.
 
 The assertions cover create-if-absent, duplicate creation, read-after-write,
 matching and stale expected-version writes, and two competing writes from the
@@ -31,12 +34,15 @@ A deliberate recovery mutation ignores the marker and must fail the same
 count assertion. A corrupt referenced delta must fail digest validation. The
 probe also creates a non-expiring checkpoint, conditionally registers its ID in
 the root and checks that a stale root version cannot overwrite the registration.
-This tests one interval and one writer; it does not exercise a kill *during*
-application, ownership takeover or recovery from a registered checkpoint.
+For a split update it kills the writer after its first durable chunk and dirty
+marker; a fresh instance replays from the empty initial base, while a negative
+control that reuses the dirty instance fails. This tests one interval and one
+writer; it does not exercise competing ownership or recovery from a registered
+checkpoint.
 
 This smoke test is **not G0.2 qualification**: it does not exercise a real
 provider, ambiguous responses, group commit, W1-G, both SlateDB layouts,
-mid-apply recovery, checkpoint-based recovery or overlay caps. It cannot select a storage
+general mid-apply recovery, checkpoint-based recovery or overlay caps. It cannot select a storage
 layout or establish cloud latency, cost, or durability. Apply the predeclared
 qualification rubric and budgets separately for the real-provider run.
 
