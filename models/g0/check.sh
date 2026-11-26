@@ -6,9 +6,11 @@ model=$(dirname "$0")/protocol.qnt
 "$quint" typecheck "$model"
 "$quint" verify "$model" --invariants publication fencing_and_outcomes gc --max-steps 8 --verbosity 0
 
-"$quint" verify "$model" --observation 's.head == 2 and s.outcome1 == 1 and s.response1 and s.reply1 == 1 and s.effects1 == 1' --max-steps 8 --verbosity 0
+"$quint" verify "$model" --observation 's.head == 2 and s.outcome1 == 1 and s.metadataDone and s.response1 and s.reply1 == 1 and s.effects1 == 1' --max-steps 8 --verbosity 0
 
-for control in publication:bad_publication_step publication:bad_foreign_step publication:bad_parent_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_gc_step gc:bad_resurrection_step; do
+"$quint" verify "$model" --observation 's.prepared and s.abandonedAttempt == 1 and s.attempt == 2 and s.receiptAttempt == 1' --max-steps 8 --verbosity 0
+
+for control in publication:bad_publication_step publication:bad_atomic_step publication:bad_foreign_step publication:bad_parent_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_gc_step gc:bad_resurrection_step gc:bad_publish_retired_step; do
   invariant=${control%%:*}
   step=${control#*:}
   output=$("$quint" verify "$model" --invariant "$invariant" --step "$step" --max-steps 8 --verbosity 0 2>&1) && {
