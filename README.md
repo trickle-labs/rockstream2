@@ -70,4 +70,6 @@ local PostgreSQL instance and set the usual `PGHOST`, `PGPORT`, `PGUSER` and
 `scripts/check-fast.sh`. The check creates only temporary tables in database
 `postgres`. It checks formatting, clippy, Rust batch results, dependency and
 cross-term negative controls, and the PostgreSQL W1-G cuts. This is not G0
-qualification; CI timing, independent review and donor inventory remain open.
+qualification; CI timing, independent review and donor inventory remain open. The dependency
+policy currently checks direct edges among workspace crates only; it does not
+inspect transitive paths through external dependencies.
