@@ -55,9 +55,13 @@ root's upper and replaying its conventionally named immutable deltas; it ignores
 an unreferenced later object and fails when a required delta is removed. Both
 SlateDB instances are closed and reopened for retained-state checks. The W1-G
 root binds the ordered deltas by SHA-256; corrupt and missing deltas are rejected.
-The W1-G path does not simulate a crash or recover from its checkpoint. Both
-layouts receive writes derived from the same batch result. No request
-amplification or cost is measured here.
+Another W1-G run receives SIGKILL after publishing cut 3 and durably writing
+only the first chunk to the cut-2 index. Recovery clones the registered cut-2
+checkpoint, verifies its baseline, and applies the cut-3 changes from the
+root-selected history. Reusing the dirty live instance fails the baseline
+negative control. Both layouts receive writes derived from the same batch
+result; the keyed-history path is not crash-tested. No request amplification
+or cost is measured here.
 
 A separate local group-commit exercise accepts two concurrently enqueued
 same-domain operations, composes their distinct outcomes in memory, and writes
@@ -68,7 +72,7 @@ fairness, bounded retry, or throughput qualification.
 
 This smoke test is **not G0.2 qualification**: it does not exercise a real
 provider, ambiguous responses, a complete group-commit scheduler, a full comparison of both storage layouts,
-general mid-apply recovery, checkpoint-based recovery or an integrated serving
+general mid-apply recovery, complete checkpoint-based recovery or an integrated serving
 overlay. It cannot select a storage
 layout or establish cloud latency, cost, or durability. Apply the predeclared
 qualification rubric and budgets separately for the real-provider run.

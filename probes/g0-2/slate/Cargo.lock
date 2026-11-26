@@ -780,6 +780,7 @@ dependencies = [
  "sha2",
  "slatedb",
  "tokio",
+ "uuid",
  "w1g-oracle",
 ]
 

@@ -1,7 +1,12 @@
 use sha2::{Digest, Sha256};
 use slatedb::object_store::{path::Path, ObjectStore, ObjectStoreExt, PutMode};
 use slatedb::{Db, WriteBatch};
-use std::{collections::BTreeMap, error::Error, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    error::Error,
+    io::{self, Write},
+    sync::Arc,
+};
 
 type Groups = BTreeMap<String, (i64, i64)>;
 type Orders = BTreeMap<i64, (i64, i64)>;
@@ -26,9 +31,14 @@ fn encode(row: Option<&(i64, i64)>) -> String {
 
 async fn reconstruct(
     store: &Arc<dyn ObjectStore>,
+    namespace: &str,
     expected_cut: u8,
 ) -> Result<Groups, Box<dyn Error>> {
-    let root = store.get(&Path::from("w1g/root")).await?.bytes().await?;
+    let root = store
+        .get(&Path::from(format!("{namespace}/root")))
+        .await?
+        .bytes()
+        .await?;
     let root = std::str::from_utf8(&root)?;
     let parts: Vec<_> = root.split(':').collect();
     if parts.len() != 3 {
@@ -46,7 +56,7 @@ async fn reconstruct(
     let mut rows = Groups::new();
     for epoch_cut in 1..=cut {
         let delta = store
-            .get(&Path::from(format!("w1g/deltas/{epoch_cut}")))
+            .get(&Path::from(format!("{namespace}/deltas/{epoch_cut}")))
             .await?
             .bytes()
             .await?;
@@ -70,7 +80,11 @@ async fn reconstruct(
     Ok(rows)
 }
 
-pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
+pub async fn run(
+    store: Arc<dyn ObjectStore>,
+    namespace: &str,
+    crash: bool,
+) -> Result<(), Box<dyn Error>> {
     let fixture = include_str!("../../../../fixtures/w1g/transactions.csv");
     let golden = include_str!("../../../../fixtures/w1g/expected.csv");
     let mut expected = BTreeMap::<u8, Groups>::new();
@@ -92,8 +106,8 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
         let epoch = line.split(',').next().ok_or("missing epoch")?.parse()?;
         epochs.entry(epoch).or_default().push(line);
     }
-    let index = Db::open("w1g/delta-index", store.clone()).await?;
-    let history = Db::open("w1g/pure-history", store.clone()).await?;
+    let index = Db::open(format!("{namespace}/delta-index"), store.clone()).await?;
+    let history = Db::open(format!("{namespace}/pure-history"), store.clone()).await?;
     let mut customers = BTreeMap::new();
     let mut orders = Orders::new();
     let mut overlay = BTreeMap::<String, String>::new();
@@ -137,7 +151,7 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
             }
             batch.put(format!("cut/{cut}/{region}"), value.as_bytes());
         }
-        let delta_path = Path::from(format!("w1g/deltas/{cut}"));
+        let delta_path = Path::from(format!("{namespace}/deltas/{cut}"));
         store
             .put_opts(&delta_path, delta.clone().into(), PutMode::Create.into())
             .await?;
@@ -153,15 +167,24 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
         root_version = Some(
             store
                 .put_opts(
-                    &Path::from("w1g/root"),
+                    &Path::from(format!("{namespace}/root")),
                     format!("{cut}:{checkpoint_id}:{}", digests.join(",")).into(),
                     mode.into(),
                 )
                 .await?
                 .into(),
         );
-        assert_eq!(reconstruct(&store, cut).await?, result);
+        assert_eq!(reconstruct(&store, namespace, cut).await?, result);
         history.write(batch).await?.await_durable().await?;
+        if crash && cut == 3 {
+            let mut partial = WriteBatch::new();
+            partial.put(b"North", encode(result.get("North")).as_bytes());
+            partial.put(b"_meta/dirty", b"1");
+            index.write(partial).await?.await_durable().await?;
+            println!("READY");
+            io::stdout().flush()?;
+            std::future::pending::<()>().await;
+        }
         for region in ["North", "South"] {
             let base = index.get(region.as_bytes()).await?;
             let base = base.as_deref().unwrap_or(b"-");
@@ -194,7 +217,7 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
             root_version = Some(
                 store
                     .put_opts(
-                        &Path::from("w1g/root"),
+                        &Path::from(format!("{namespace}/root")),
                         format!("{cut}:{}:{}", checkpoint.id, digests.join(",")).into(),
                         PutMode::Update(version).into(),
                     )
@@ -215,9 +238,9 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
     assert!(saw_overlay_difference);
     history.close().await?;
     index.close().await?;
-    let reopened_history = Db::open("w1g/pure-history", store.clone()).await?;
-    let reopened_index = Db::open("w1g/delta-index", store.clone()).await?;
-    assert_eq!(reconstruct(&store, 4).await?, snapshots[3]);
+    let reopened_history = Db::open(format!("{namespace}/pure-history"), store.clone()).await?;
+    let reopened_index = Db::open(format!("{namespace}/delta-index"), store.clone()).await?;
+    assert_eq!(reconstruct(&store, namespace, 4).await?, snapshots[3]);
     for region in ["North", "South"] {
         let past = reopened_history
             .get(format!("cut/2/{region}"))
@@ -231,21 +254,104 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
     }
     store
         .put_opts(
-            &Path::from("w1g/deltas/5"),
+            &Path::from(format!("{namespace}/deltas/5")),
             "South=999,999".into(),
             PutMode::Create.into(),
         )
         .await?;
-    assert_eq!(reconstruct(&store, 4).await?, snapshots[3]);
+    assert_eq!(reconstruct(&store, namespace, 4).await?, snapshots[3]);
     store
-        .put(&Path::from("w1g/deltas/2"), "South=999,999".into())
+        .put(
+            &Path::from(format!("{namespace}/deltas/2")),
+            "South=999,999".into(),
+        )
         .await?;
-    let error = reconstruct(&store, 4).await.unwrap_err();
+    let error = reconstruct(&store, namespace, 4).await.unwrap_err();
     assert!(error.to_string().contains("digest mismatch"));
-    store.delete(&Path::from("w1g/deltas/2")).await?;
-    assert!(reconstruct(&store, 4).await.is_err());
+    store
+        .delete(&Path::from(format!("{namespace}/deltas/2")))
+        .await?;
+    assert!(reconstruct(&store, namespace, 4).await.is_err());
     reopened_index.close().await?;
     reopened_history.close().await?;
     println!("W1G-COMPARED");
+    Ok(())
+}
+
+pub async fn recover(
+    store: Arc<dyn ObjectStore>,
+    namespace: &str,
+    reuse_dirty: bool,
+) -> Result<(), Box<dyn Error>> {
+    let root = store
+        .get(&Path::from(format!("{namespace}/root")))
+        .await?
+        .bytes()
+        .await?;
+    let root = std::str::from_utf8(&root)?;
+    let fields: Vec<_> = root.split(':').collect();
+    if fields.len() != 3 || fields[0] != "3" {
+        return Err("invalid recovery root".into());
+    }
+    let checkpoint = uuid::Uuid::parse_str(fields[1])?;
+    let result = reconstruct(&store, namespace, 3).await?;
+    let mut golden = BTreeMap::<u8, Groups>::new();
+    for line in include_str!("../../../../fixtures/w1g/expected.csv")
+        .lines()
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+    {
+        let f: Vec<_> = line.split(',').collect();
+        golden
+            .entry(f[0].parse()?)
+            .or_default()
+            .insert(f[1].into(), (f[2].parse()?, f[3].parse()?));
+    }
+    assert_eq!(result, *golden.get(&3).ok_or("missing cut 3")?);
+    let source = format!("{namespace}/delta-index");
+    let dirty = Db::open(source.clone(), store.clone()).await?;
+    assert_eq!(
+        dirty.get(b"_meta/dirty").await?.as_deref(),
+        Some(b"1".as_slice())
+    );
+    assert_eq!(
+        dirty.get(b"_meta/applied_cut").await?.as_deref(),
+        Some(b"2".as_slice())
+    );
+    dirty.close().await?;
+    let target = if reuse_dirty {
+        source.clone()
+    } else {
+        let target = format!("{namespace}/takeover-index");
+        let admin = slatedb::admin::AdminBuilder::new(target.clone(), store.clone()).build();
+        admin
+            .create_clone_builder_from_source(slatedb::admin::CloneSourceSpec::with_checkpoint(
+                source, checkpoint,
+            ))
+            .build()
+            .await?;
+        target
+    };
+    let recovered = Db::open(target, store).await?;
+    let baseline = golden.get(&2).ok_or("missing cut 2")?;
+    let mut batch = WriteBatch::new();
+    for region in ["North", "South"] {
+        assert_eq!(
+            recovered.get(region.as_bytes()).await?.as_deref(),
+            Some(encode(baseline.get(region)).as_bytes())
+        );
+        if baseline.get(region) != result.get(region) {
+            batch.put(region.as_bytes(), encode(result.get(region)).as_bytes());
+        }
+    }
+    batch.put(b"_meta/applied_cut", b"3");
+    recovered.write(batch).await?.await_durable().await?;
+    for region in ["North", "South"] {
+        assert_eq!(
+            recovered.get(region.as_bytes()).await?.as_deref(),
+            Some(encode(result.get(region)).as_bytes())
+        );
+    }
+    recovered.close().await?;
+    println!("W1G-RECOVERED");
     Ok(())
 }
