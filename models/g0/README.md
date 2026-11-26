@@ -3,8 +3,10 @@
 `protocol.qnt` is a bounded abstraction of one publication group, two
 partitions and one reclaimable object, not the production metadata implementation.
 A publication atomically updates both visible partition flags and the root
-reference, after checking the expected root revision, owner generation, complete
-receipt set, matching receipt attempt and object retirement state. Operation 1
+reference, after checking the expected root revision, publication parent,
+owner generation, complete receipt set, matching receipt attempt and object
+retirement state. Root CAS conflicts can refresh the revision while preserving
+the original publication parent and generation for revalidation. Operation 1
 may lose its response; its stored outcome survives a later root advance.
 `advance` is an unrelated metadata-root transition with its own identity, not a
 publication. Pin, root-reference and retire transitions compete atomically;
@@ -17,7 +19,8 @@ without reuse. A single receipt-attempt ID is shared by the abstract set;
 duplicates are represented separately. A receive transition may deliver a
 receipt for an abandoned attempt, and a witness exercises that interleaving.
 Negative controls allow missing/foreign
-receipts, partial visibility, a stale root, stale ownership, a repeated effect,
+receipts, partial visibility, a stale root or publication parent, a refresh
+that adopts a new owner generation, stale ownership, a repeated effect,
 a response using the current root, pinning or referencing retired data, and
 publishing retired data. A separate mutant reuses an abandoned attempt ID and
 can publish its stale receipt. Each mutant must produce a counterexample.
@@ -30,7 +33,8 @@ models/g0/check.sh
 
 Quint downloads Apalache 0.62.4 on first use and starts a local server. The
 script checks all paths through eight steps, checks lost-response recovery,
-delayed-receipt and bad attempt-reuse witnesses, and requires each mutant to report an actual counterexample;
+delayed-receipt, bad attempt-reuse and root-refresh witnesses, and requires
+each mutant to report an actual counterexample;
 infrastructure errors do not count as a negative-control success. Apalache is
 symbolic and does not report an enumerated state count. `QUINT` may name a
 non-default Quint executable.
@@ -38,11 +42,9 @@ non-default Quint executable.
 The abstraction does not model per-participant receipt payloads or arrival,
 durable sealing, or the complete metadata tree and staging namespaces. Its
 visibility flags do not model output values or multiple versioned partition
-roots. It uses one root revision as the expected-parent comparison, so an
-unrelated metadata advance requires re-preparation rather than distinguishing a
-refreshed root from an unchanged publication parent. GC and ownership
-transitions do not themselves advance the modeled root revision; their full
-CAS-conflict and revalidation schedules are not modeled. It omits operation
+roots. The competing publication is an atomic abstract action rather than a
+second prepared receipt set. GC transitions do not advance the modeled root
+revision; their full CAS-conflict and revalidation schedules are not modeled. It omits operation
 retention floors and the complete retry protocol, and reader leases and
 real-time grace periods belong to G4.0. Independent safety review must judge
 these limitations before this model is cited for G0.3; no implementation,

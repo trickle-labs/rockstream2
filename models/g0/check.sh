@@ -12,7 +12,9 @@ model=$(dirname "$0")/protocol.qnt
 
 "$quint" verify "$model" --no-invariant --step bad_reuse_step --observation 's.stalePublished and s.attempt == 1 and s.receiptAttempt == 1 and s.abandonedAttempt == 1' --max-steps 8 --verbosity 0
 
-for control in publication:bad_publication_step publication:bad_atomic_step publication:bad_foreign_step publication:bad_parent_step fencing_and_outcomes:bad_reuse_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_gc_step gc:bad_resurrection_step gc:bad_publish_retired_step; do
+"$quint" verify "$model" --observation 's.refreshed and s.metadataDone and s.publications == 1 and s.parent == 0 and s.publicationHead == 1 and s.effects1 == 1' --max-steps 8 --verbosity 0
+
+for control in publication:bad_publication_step publication:bad_atomic_step publication:bad_foreign_step publication:bad_parent_step publication:bad_revision_step fencing_and_outcomes:bad_reuse_step fencing_and_outcomes:bad_refresh_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_gc_step gc:bad_resurrection_step gc:bad_publish_retired_step; do
   invariant=${control%%:*}
   step=${control#*:}
   output=$("$quint" verify "$model" --invariant "$invariant" --step "$step" --max-steps 8 --verbosity 0 2>&1) && {
