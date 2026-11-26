@@ -6,8 +6,9 @@ Publication atomically updates both visible partition flags and the root after
 checking the root revision, publication parent, owner generation, complete
 receipt set, receipt attempts and object retirement state. A sealed preparation
 captures the attempt, parent, owner and receipt facts; commit revalidates them.
-Root CAS conflicts can refresh the revision while retaining the original parent
-and generation. Operation 1 can lose its response; its stored outcome survives
+Root CAS conflicts can refresh the revision while retaining the original parent,
+generation and plan. A root plan change invalidates an old sealed preparation
+even if its parent and owner are unchanged; a new plan can be prepared. Operation 1 can lose its response; its stored outcome survives
 an unrelated root advance. Pin and retire requests prepare against a revision,
 compete through CAS, and must refresh and revalidate after conflict. Collection
 also requires abstract object age 2.
@@ -16,8 +17,9 @@ The model bounds are two publication operation IDs, two monotonic attempt IDs,
 two owner generations, three root revisions, participants `{1, 2}` plus
 foreign `3`, and one object and pin. Partitions arrive independently. Each
 receipt scope encodes `(interval, plan)` as `(1,1)`, `(2,1)` or `(1,2)`; the
-prepared interval and plan are fixed at `(1,1)`. This covers one mismatch at a
-time, not all possible values or simultaneous mismatches. Sealing snapshots
+prepared interval is fixed at 1 and the plan can advance from 1 to 2. This
+covers one mismatch at a time, not all possible values or simultaneous
+mismatches; interval 2 under plan 2 is not represented. Sealing snapshots
 each scope. Duplicates and delayed receipts from abandoned attempts are modeled.
 
 Coverage mutants bypass receipt validation at sealing and publication while
@@ -26,7 +28,8 @@ mixed-attempt, interval-mismatch and plan-mismatch sets to be published with an
 intact seal. Another mutant changes one receipt identity after sealing and
 commits it by bypassing the seal comparison. The remaining mutants cover partial
 visibility, stale CAS or parent, unsafe ownership refresh, repeated effects,
-incorrect reconciliation, pin/retire races and resurrection. Each must produce
+incorrect reconciliation, a stale plan after CAS refresh, pin/retire races
+and resurrection. Each must produce
 a counterexample.
 
 With Node, Java and Quint 0.34.0 installed, run:
@@ -44,8 +47,8 @@ Apalache is symbolic and does not report an enumerated state count. `QUINT` may
 name a non-default Quint executable.
 
 The abstraction models receipt identities, scopes and atomic sealing, not
-receipt payload contents, a changing prepared plan/interval, the seal storage
-protocol, or the complete metadata tree and staging namespaces. Visibility
+receipt payload contents, more than one plan change, a changing prepared
+interval, the seal storage protocol, or the complete metadata tree and staging namespaces. Visibility
 flags do not model output values or multiple versioned partition roots. The
 competing publication is an atomic abstract action rather than a second prepared
 receipt set. GC models one pin and one retire request, not complete reachability
