@@ -86,6 +86,8 @@ def slate_recovery(binary):
         raise AssertionError(f"dirty-instance negative control was not detected: {mutant.stderr!r}")
     comparison = recover("w1g", "w1g")
     expect((comparison.returncode, comparison.stdout), (0, b"W1G-COMPARED\n"), f"W1-G layouts: {comparison.stderr!r}")
+    group = recover("group", "group")
+    expect((group.returncode, group.stdout), (0, b"GROUP-COMMIT\n"), f"group commit: {group.stderr!r}")
 
 
 def main():

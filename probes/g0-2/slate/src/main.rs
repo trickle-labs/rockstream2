@@ -50,6 +50,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if mode == "w1g" {
         return w1g::run(store).await;
     }
+    if mode == "group" {
+        return group::run(store).await;
+    }
     let root = Path::from(format!("{prefix}/root"));
     if mode == "publish" || mode == "publish-corrupt" {
         store
@@ -187,4 +190,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
+mod group;
 mod w1g;

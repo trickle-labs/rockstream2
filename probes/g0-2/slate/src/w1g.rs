@@ -1,3 +1,4 @@
+use sha2::{Digest, Sha256};
 use slatedb::object_store::{path::Path, ObjectStore, ObjectStoreExt, PutMode};
 use slatedb::{Db, WriteBatch};
 use std::{collections::BTreeMap, error::Error, sync::Arc};
@@ -29,10 +30,18 @@ async fn reconstruct(
 ) -> Result<Groups, Box<dyn Error>> {
     let root = store.get(&Path::from("w1g/root")).await?.bytes().await?;
     let root = std::str::from_utf8(&root)?;
-    let cut: u8 = root.split(':').next().ok_or("missing root cut")?.parse()?;
+    let parts: Vec<_> = root.split(':').collect();
+    if parts.len() != 3 {
+        return Err("invalid root".into());
+    }
+    let cut: u8 = parts[0].parse()?;
     assert_eq!(cut, expected_cut);
     if cut > 4 {
         return Err("unexpected root cut".into());
+    }
+    let digests: Vec<_> = parts[2].split(',').collect();
+    if digests.len() != usize::from(cut) {
+        return Err("invalid delta coverage".into());
     }
     let mut rows = Groups::new();
     for epoch_cut in 1..=cut {
@@ -41,6 +50,9 @@ async fn reconstruct(
             .await?
             .bytes()
             .await?;
+        if format!("{:x}", Sha256::digest(&delta)) != digests[usize::from(epoch_cut - 1)] {
+            return Err("W1-G delta digest mismatch".into());
+        }
         let mut seen = BTreeMap::new();
         for line in std::str::from_utf8(&delta)?.lines() {
             let (region, value) = line.split_once('=').ok_or("invalid delta")?;
@@ -89,6 +101,7 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
     let mut snapshots = Vec::new();
     let mut previous = Groups::new();
     let mut checkpoint_id = String::new();
+    let mut digests = Vec::new();
     let mut saw_overlay_difference = false;
     for (epoch, lines) in epochs {
         for line in lines {
@@ -132,6 +145,7 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
             store.get(&delta_path).await?.bytes().await?.as_ref(),
             delta.as_bytes()
         );
+        digests.push(format!("{:x}", Sha256::digest(delta.as_bytes())));
         let mode = match root_version.take() {
             Some(version) => PutMode::Update(version),
             None => PutMode::Create,
@@ -140,7 +154,7 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
             store
                 .put_opts(
                     &Path::from("w1g/root"),
-                    format!("{cut}:{checkpoint_id}").into(),
+                    format!("{cut}:{checkpoint_id}:{}", digests.join(",")).into(),
                     mode.into(),
                 )
                 .await?
@@ -181,7 +195,7 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
                 store
                     .put_opts(
                         &Path::from("w1g/root"),
-                        format!("{cut}:{}", checkpoint.id).into(),
+                        format!("{cut}:{}:{}", checkpoint.id, digests.join(",")).into(),
                         PutMode::Update(version).into(),
                     )
                     .await?
@@ -223,6 +237,11 @@ pub async fn run(store: Arc<dyn ObjectStore>) -> Result<(), Box<dyn Error>> {
         )
         .await?;
     assert_eq!(reconstruct(&store, 4).await?, snapshots[3]);
+    store
+        .put(&Path::from("w1g/deltas/2"), "South=999,999".into())
+        .await?;
+    let error = reconstruct(&store, 4).await.unwrap_err();
+    assert!(error.to_string().contains("digest mismatch"));
     store.delete(&Path::from("w1g/deltas/2")).await?;
     assert!(reconstruct(&store, 4).await.is_err());
     reopened_index.close().await?;

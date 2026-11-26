@@ -53,14 +53,21 @@ an exploratory keyed-history representation, not a qualified pure-SlateDB
 history implementation. A separate read reconstructs each cut by reading the
 root's upper and replaying its conventionally named immutable deltas; it ignores
 an unreferenced later object and fails when a required delta is removed. Both
-SlateDB instances are closed and reopened for retained-state checks. Unlike the
-single-delta recovery probe, this W1-G root does not bind deltas by digest, and
-the W1-G path does not simulate a crash or recover from its checkpoint. Both
+SlateDB instances are closed and reopened for retained-state checks. The W1-G
+root binds the ordered deltas by SHA-256; corrupt and missing deltas are rejected.
+The W1-G path does not simulate a crash or recover from its checkpoint. Both
 layouts receive writes derived from the same batch result. No request
 amplification or cost is measured here.
 
+A separate local group-commit exercise accepts two concurrently enqueued
+same-domain operations, composes their distinct outcomes in memory, and writes
+both in one conditional root update. It checks rejection of a stale CAS and
+that outcomes remain present after a later root advance. This is a two-operation
+experiment, not a production scheduler, ambiguous-response fault injection,
+fairness, bounded retry, or throughput qualification.
+
 This smoke test is **not G0.2 qualification**: it does not exercise a real
-provider, ambiguous responses, group commit, a full comparison of both storage layouts,
+provider, ambiguous responses, a complete group-commit scheduler, a full comparison of both storage layouts,
 general mid-apply recovery, checkpoint-based recovery or an integrated serving
 overlay. It cannot select a storage
 layout or establish cloud latency, cost, or durability. Apply the predeclared
