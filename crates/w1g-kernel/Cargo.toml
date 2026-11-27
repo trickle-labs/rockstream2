@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 arrow-array = "=59.3.2"
+arrow-buffer = "=59.3.2"
 arrow-schema = "=59.3.2"
 
 [lints.rust]

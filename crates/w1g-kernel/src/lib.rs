@@ -1,7 +1,9 @@
 //! Bounded, single-interval W1-G incremental kernel spike.
 use arrow_array::{Array, Decimal128Array, Int64Array, RecordBatch, StringArray};
+use arrow_buffer::{Buffer, OffsetBuffer};
 use arrow_schema::DataType;
 use std::borrow::Borrow;
+#[cfg(test)]
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -9,8 +11,12 @@ const MAX_ROWS: usize = 128;
 const MAX_REGION_BYTES: usize = 32;
 const MAX_INPUT_BYTES: usize = 16 * 1024;
 const MAX_OUTPUT_ROWS: usize = 2 * MAX_ROWS;
-const MAX_OUTPUT_SCRATCH_BYTES: usize = MAX_OUTPUT_ROWS
-    * (std::mem::size_of::<&str>() + 2 * std::mem::size_of::<i64>() + std::mem::size_of::<i128>());
+const OUTPUT_ROW_BYTES: usize = MAX_REGION_BYTES
+    + std::mem::size_of::<i32>()
+    + 2 * std::mem::size_of::<i64>()
+    + std::mem::size_of::<i128>();
+const MAX_OUTPUT_SCRATCH_BYTES: usize =
+    MAX_OUTPUT_ROWS * OUTPUT_ROW_BYTES + std::mem::size_of::<i32>();
 
 fn reserve<T>(buffer: &mut Vec<T>, rows: usize) -> Result<(), &'static str> {
     buffer
@@ -155,11 +161,10 @@ impl Kernel {
         Ok(Int64Array::from(vec![count]))
     }
 
-    pub fn result(&self) -> BTreeMap<String, (i64, i128)> {
+    pub fn result(&self) -> impl Iterator<Item = (&str, (i64, i128))> {
         self.groups
             .iter()
-            .map(|(region, value)| (region.as_str().to_owned(), *value))
-            .collect()
+            .map(|(region, value)| (region.as_str(), *value))
     }
 
     fn adjust(&mut self, region: &str, cents: i64, weight: i64) -> Result<(), &'static str> {
@@ -259,48 +264,49 @@ impl Kernel {
         if output_rows > MAX_OUTPUT_ROWS {
             return Err("output limit");
         }
-        let bytes_per_row = std::mem::size_of::<&str>()
-            .checked_add(2 * std::mem::size_of::<i64>())
-            .and_then(|n| n.checked_add(std::mem::size_of::<i128>()))
-            .ok_or("scratch size overflow")?;
         let requested = output_rows
-            .checked_mul(bytes_per_row)
+            .checked_mul(OUTPUT_ROW_BYTES)
+            .and_then(|n| n.checked_add(std::mem::size_of::<i32>()))
             .ok_or("scratch size overflow")?;
         if requested > scratch_limit {
             return Err("scratch limit");
         }
-        let mut regions = Vec::<&str>::new();
+        let mut regions = Vec::<u8>::new();
+        let mut offsets = Vec::<i32>::new();
         let mut counts = Vec::<i64>::new();
         let mut sums = Vec::<i128>::new();
         let mut weights = Vec::<i64>::new();
-        reserve(&mut regions, output_rows)?;
+        reserve(
+            &mut regions,
+            output_rows
+                .checked_mul(MAX_REGION_BYTES)
+                .ok_or("scratch size overflow")?,
+        )?;
+        reserve(
+            &mut offsets,
+            output_rows.checked_add(1).ok_or("scratch size overflow")?,
+        )?;
         reserve(&mut counts, output_rows)?;
         reserve(&mut sums, output_rows)?;
         reserve(&mut weights, output_rows)?;
         let scratch_bytes = regions
             .capacity()
-            .checked_mul(std::mem::size_of::<&str>())
-            .and_then(|v| {
-                counts
+            .checked_add(
+                offsets
                     .capacity()
-                    .checked_mul(std::mem::size_of::<i64>())
-                    .and_then(|n| v.checked_add(n))
-            })
-            .and_then(|v| {
-                sums.capacity()
-                    .checked_mul(std::mem::size_of::<i128>())
-                    .and_then(|n| v.checked_add(n))
-            })
-            .and_then(|v| {
-                weights
-                    .capacity()
-                    .checked_mul(std::mem::size_of::<i64>())
-                    .and_then(|n| v.checked_add(n))
+                    .checked_mul(std::mem::size_of::<i32>())
+                    .ok_or("scratch size overflow")?,
+            )
+            .and_then(|n| n.checked_add(counts.capacity().checked_mul(std::mem::size_of::<i64>())?))
+            .and_then(|n| n.checked_add(sums.capacity().checked_mul(std::mem::size_of::<i128>())?))
+            .and_then(|n| {
+                n.checked_add(weights.capacity().checked_mul(std::mem::size_of::<i64>())?)
             })
             .ok_or("scratch size overflow")?;
         if scratch_bytes > scratch_limit {
             return Err("scratch limit");
         }
+        offsets.push(0);
         let mut next = self.clone();
         for i in 0..customers.num_rows() {
             let id = ids.value(i);
@@ -386,7 +392,8 @@ impl Kernel {
         next.epoch = next.epoch.checked_add(1).ok_or("epoch overflow")?;
         for (region, old) in self.groups.iter() {
             if next.groups.get(region.as_str()) != Some(old) {
-                regions.push(region.as_str());
+                regions.extend_from_slice(region.as_str().as_bytes());
+                offsets.push(i32::try_from(regions.len()).map_err(|_| "output size overflow")?);
                 counts.push(old.0);
                 sums.push(old.1);
                 weights.push(-1);
@@ -394,17 +401,24 @@ impl Kernel {
         }
         for (region, new) in next.groups.iter() {
             if self.groups.get(region.as_str()) != Some(new) {
-                regions.push(region.as_str());
+                regions.extend_from_slice(region.as_str().as_bytes());
+                offsets.push(i32::try_from(regions.len()).map_err(|_| "output size overflow")?);
                 counts.push(new.0);
                 sums.push(new.1);
                 weights.push(1);
             }
         }
+        let regions = StringArray::try_new(
+            OffsetBuffer::new(offsets.into()),
+            Buffer::from_vec(regions),
+            None,
+        )
+        .map_err(|_| "invalid string output")?;
         let decimal = Decimal128Array::from(sums)
             .with_precision_and_scale(38, 2)
             .map_err(|_| "invalid decimal output")?;
         let output = RecordBatch::try_from_iter(vec![
-            ("region", Arc::new(StringArray::from(regions)) as _),
+            ("region", Arc::new(regions) as _),
             ("count", Arc::new(Int64Array::from(counts)) as _),
             ("revenue", Arc::new(decimal) as _),
             ("weight", Arc::new(Int64Array::from(weights)) as _),
@@ -418,6 +432,13 @@ impl Kernel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn snapshot(kernel: &Kernel) -> BTreeMap<String, (i64, i128)> {
+        kernel
+            .result()
+            .map(|(region, row)| (region.to_owned(), row))
+            .collect()
+    }
 
     fn customers(rows: &[(i64, &str, i64)]) -> RecordBatch {
         RecordBatch::try_from_iter(vec![
@@ -461,7 +482,7 @@ mod tests {
     #[test]
     fn frozen_w1g_all_cuts() {
         let mut kernel = Kernel::default();
-        assert!(kernel.result().is_empty());
+        assert_eq!(kernel.result().count(), 0);
         assert_eq!(
             kernel.ungrouped_count().unwrap().values(),
             &w1g_oracle::ungrouped_count(&BTreeMap::new(), &BTreeMap::new())
@@ -536,7 +557,7 @@ mod tests {
                 .map(|(region, (count, cents))| (region, (count, i128::from(cents))))
                 .collect::<BTreeMap<_, _>>();
             assert_eq!(
-                kernel.result(),
+                snapshot(&kernel),
                 oracle,
                 "independent batch at cut {}",
                 epoch + 1
@@ -558,7 +579,7 @@ mod tests {
                     );
                 }
             }
-            assert_eq!(kernel.result(), want, "cut {}", epoch + 1);
+            assert_eq!(snapshot(&kernel), want, "cut {}", epoch + 1);
             let expected_bag = want
                 .iter()
                 .map(|(region, (count, sum))| ((region.clone(), *count, *sum), 1))
@@ -664,14 +685,26 @@ mod tests {
     }
 
     #[test]
+    fn arrow_output_preserves_multibyte_and_embedded_null() {
+        let mut kernel = Kernel::default();
+        let output = kernel
+            .apply(0, &customers(&[(1, "é\0x", 1)]), &orders(&[(2, 1, 100, 1)]))
+            .unwrap();
+        let regions = output
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(regions.value(0), "é\0x");
+    }
+
+    #[test]
     fn output_scratch_limit_rejects_atomically_before_growth() {
         let mut kernel = Kernel::default();
         let before = kernel.clone();
         let input = customers(&[(1, "N", 1)]);
         let empty = orders(&[]);
-        let one_row = std::mem::size_of::<&str>()
-            + 2 * std::mem::size_of::<i64>()
-            + std::mem::size_of::<i128>();
+        let one_row = OUTPUT_ROW_BYTES + std::mem::size_of::<i32>();
         assert_eq!(
             kernel.apply_with_scratch_limit(0, &input, &empty, one_row - 1),
             Err("scratch limit")
@@ -729,8 +762,8 @@ mod tests {
         }
         let batch = kernel.apply(1, &customers(&changes), &orders(&[])).unwrap();
         assert_eq!(batch.num_rows(), 128);
-        assert_eq!(kernel.result().len(), 64);
-        assert!(kernel.result().values().all(|&row| row == (1, 100)));
+        assert_eq!(kernel.result().count(), 64);
+        assert!(kernel.result().all(|(_, row)| row == (1, 100)));
         let before = kernel.clone();
         assert_eq!(
             kernel.apply(2, &customers(&[(999, "N", 1)]), &orders(&[])),

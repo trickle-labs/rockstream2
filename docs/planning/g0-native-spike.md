@@ -18,7 +18,7 @@ matrix.
 The fixed per-interval input limit is 128 total rows and 16 KiB reported Arrow
 array memory, region strings are at most 32 bytes, and retained customer plus
 order state is at most 128 rows. Output is limited to 256 rows. Before cloning
-state, the kernel computes a checked upper bound for four output scratch vectors,
+state, the kernel computes a checked upper bound for five output buffers,
 rejects a budget overrun and uses fallible reservation for those vectors. It
 checks the returned capacities against the scratch-byte cap. Customer, order
 and group state use fixed-capacity inline slots and fixed-width UTF-8 regions,
@@ -48,22 +48,21 @@ measurements.
 The input/state cardinality checks reject before retaining a 129th row, and
 Arrow input array size is checked before processing. They are not a fallible
 allocator or a reservation of process memory. The fixed state slots and clone are inline and bounded by their Rust type sizes;
-the `result()` convenience method separately constructs an allocated map. The
-scratch cap accounts for the four owned vector capacities, not allocator
-metadata, stack, Arrow buffers, the convenience map, shared input, or process
-headroom. At the 256-row output limit, the logical Arrow values and offsets
+the `result()` view iterates without allocation. The output budget accounts
+for the five owned vector capacities (UTF-8 values and offsets, counts, sums,
+and weights), not allocator metadata, stack, Arrow wrappers, shared input, or
+process headroom. At the 256-row output limit, the logical Arrow values and offsets
 alone are at most 17,412 bytes: 256 rows times 32 region bytes, 8 count bytes,
 16 revenue bytes and 8 weight bytes, plus 257 four-byte UTF-8 offsets. This is
 not an allocation bound: it excludes alignment, capacity rounding, Arrow and
 schema objects, temporary buffers and allocator metadata. The reservation
 regression forces a capacity-overflow error; it does
-not simulate a physical OOM. Output also constructs `StringArray::from(Vec<&str>)`: in pinned
-`arrow-array` 59.3.2, that calls `GenericByteArray::from_iter_values`, which
-creates/grows `arrow-buffer` `MutableBuffer`s. In pinned `arrow-buffer` 59.3.2,
-`MutableBuffer::with_capacity` calls `std::alloc::alloc` followed by
-`handle_alloc_error` if allocation fails. Thus an allocator failure in this
-path does not return the kernel's `Err`, and an RSS measurement cannot prove
-otherwise. `Arc` and `RecordBatch` construction also allocate. A fallible
+not simulate a physical OOM. The output values and offsets are reserved fallibly before the state clone and
+passed to Arrow without copying via `Buffer::from_vec` and `StringArray::try_new`.
+However, pinned `arrow-buffer` 59.3.2 wraps each `Buffer`'s backing bytes in
+`Arc::new`, which itself is infallible; array, schema and `RecordBatch`
+construction also allocate. An allocator failure in those paths need not return
+the kernel's `Err`, and an RSS measurement cannot prove otherwise. A fully fallible
 construction strategy or a separately qualified isolation/allocator mechanism
 is needed before treating memory exhaustion as a controlled error; neither is
 implemented by this spike.
