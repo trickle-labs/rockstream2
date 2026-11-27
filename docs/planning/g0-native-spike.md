@@ -90,7 +90,9 @@ passed to Arrow without copying via the custom allocation API and `StringArray::
 However, pinned `arrow-buffer` 59.3.2 wraps each `Buffer`'s backing bytes in
 `Arc::new`, which itself is infallible; array, schema and `RecordBatch`
 construction also allocate. An allocator failure in those paths need not return
-the kernel's `Err`, and an RSS measurement cannot prove otherwise. A fully fallible
+the kernel's `Err`; an [isolated injection probe](../../evidence/g0-4/allocation-failure-probe/README.md)
+observed process aborts after both cold and warm admissions. An RSS measurement
+cannot prove otherwise. A fully fallible
 construction strategy or a separately qualified isolation/allocator mechanism
 is needed before treating memory exhaustion as a controlled error; neither is
 implemented by this spike.

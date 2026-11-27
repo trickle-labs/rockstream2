@@ -1,0 +1,48 @@
+diff --git a/crates/w1g-kernel/examples/allocation_failure_probe.rs b/crates/w1g-kernel/examples/allocation_failure_probe.rs
+new file mode 100644
+index 0000000..21f0326
+--- /dev/null
++++ b/crates/w1g-kernel/examples/allocation_failure_probe.rs
+@@ -0,0 +1,42 @@
++#![allow(unsafe_code)]
++
++use std::alloc::{GlobalAlloc, Layout, System};
++use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
++use arrow_array::{Int64Array, RecordBatch, StringArray};
++use w1g_kernel::{Kernel, OutputBudget};
++struct Probe;
++static ACTIVE: AtomicBool = AtomicBool::new(false);
++static CALL: AtomicUsize = AtomicUsize::new(0);
++static FAIL: AtomicUsize = AtomicUsize::new(usize::MAX);
++static SIZES: [AtomicUsize; 128] = [const { AtomicUsize::new(0) }; 128];
++unsafe impl GlobalAlloc for Probe {
++    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
++        if ACTIVE.load(Ordering::Relaxed) {
++            let n = CALL.fetch_add(1, Ordering::Relaxed);
++            if n < SIZES.len() { SIZES[n].store(layout.size(), Ordering::Relaxed); }
++            if n == FAIL.load(Ordering::Relaxed) { return std::ptr::null_mut(); }
++        }
++        unsafe { System.alloc(layout) }
++    }
++    unsafe fn dealloc(&self, p: *mut u8, l: Layout) { unsafe { System.dealloc(p,l) } }
++}
++#[global_allocator] static ALLOC: Probe = Probe;
++fn main() {
++    let fail = std::env::args().nth(1).map(|s| s.parse().unwrap()).unwrap_or(usize::MAX);
++    let customers = RecordBatch::try_from_iter(vec![("id", Arc::new(Int64Array::from(vec![1])) as _), ("region", Arc::new(StringArray::from(vec!["North"])) as _), ("weight", Arc::new(Int64Array::from(vec![1])) as _)]).unwrap();
++    let orders = RecordBatch::try_from_iter(vec![("id", Arc::new(Int64Array::from(vec![10])) as _), ("customer", Arc::new(Int64Array::from(vec![1])) as _), ("cents", Arc::new(Int64Array::from(vec![100])) as _), ("weight", Arc::new(Int64Array::from(vec![1])) as _)]).unwrap();
++    let mut kernel = Kernel::with_budget(Arc::new(OutputBudget::default()));
++    if std::env::var_os("G04_WARM").is_some() {
++        drop(kernel.apply(0, &customers, &orders).unwrap());
++    }
++    let epoch = if std::env::var_os("G04_WARM").is_some() { 1 } else { 0 };
++    let empty_customers = RecordBatch::try_from_iter(vec![("id", Arc::new(Int64Array::from(Vec::<i64>::new())) as _), ("region", Arc::new(StringArray::from(Vec::<&str>::new())) as _), ("weight", Arc::new(Int64Array::from(Vec::<i64>::new())) as _)]).unwrap();
++    let next_orders = RecordBatch::try_from_iter(vec![("id", Arc::new(Int64Array::from(vec![10, 10])) as _), ("customer", Arc::new(Int64Array::from(vec![1, 1])) as _), ("cents", Arc::new(Int64Array::from(vec![100, 200])) as _), ("weight", Arc::new(Int64Array::from(vec![-1, 1])) as _)]).unwrap();
++    let (customers, orders) = if epoch == 1 { (&empty_customers, &next_orders) } else { (&customers, &orders) };
++    FAIL.store(fail, Ordering::Relaxed);
++    ACTIVE.store(true, Ordering::SeqCst);
++    let result = kernel.apply(epoch, customers, orders);
++    ACTIVE.store(false, Ordering::SeqCst);
++    println!("result={:?} calls={}", result.as_ref().map(|b| b.num_rows()), CALL.load(Ordering::Relaxed));
++    print!("sizes="); for i in 0..CALL.load(Ordering::Relaxed).min(SIZES.len()) { print!("{}:{} ", i, SIZES[i].load(Ordering::Relaxed)); } println!();
++}
