@@ -18,6 +18,7 @@ model=$(dirname "$0")/protocol.qnt
 "$quint" verify "$model" --observation 's.pinned and s.retirePending and s.retireRevision < s.head' --max-steps 8 --verbosity 0
 "$quint" verify "$model" --observation 's.retired and s.pinPending and s.pinRevision < s.head' --max-steps 8 --verbosity 0
 "$quint" verify "$model" --observation 's.retired and not(s.pinned) and not(s.root) and not(s.deleted) and s.age < 2' --max-steps 8 --verbosity 0
+"$quint" verify "$model" --observation 'not(s.retired) and not(s.pinned) and not(s.root) and not(s.deleted) and not(s.stageProtected) and s.age >= 2' --max-steps 8 --verbosity 0
 
 "$quint" verify "$model" --observation 's.prepared and s.abandonedAttempt == 1 and s.attempt == 2 and s.receipts == Set(1, 2) and s.receipt1Attempt == 1 and s.receipt2Attempt == 2 and s.receipt1Scope == 1 and s.receipt2Scope == 1' --max-steps 8 --verbosity 0
 "$quint" verify "$model" --observation 's.prepared and s.receipts == Set(1) and s.receipt1Attempt == s.attempt' --max-steps 8 --verbosity 0
@@ -48,7 +49,7 @@ model=$(dirname "$0")/protocol.qnt
 
 "$quint" verify "$model" --observation 'not(s.prepared) and s.abandonedAttempt != 0 and s.abandonedAttempt == s.attempt and s.stageProtected and not(s.root) and not(s.retired)' --max-steps 8 --verbosity 0
 
-for control in publication:bad_publication_step publication:bad_seal_step publication:bad_atomic_step publication:bad_duplicate_step publication:bad_foreign_object_step publication:bad_undurable_step publication:bad_unprotected_step publication:bad_foreign_step publication:bad_mixed_step publication:bad_missing_step publication:bad_interval_step publication:bad_plan_step publication:bad_plan_revision_step publication:bad_parent_step publication:bad_revision_step fencing_and_outcomes:bad_reuse_step fencing_and_outcomes:bad_refresh_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_stage_retire_step gc:bad_pin_step gc:bad_retire_step gc:bad_resurrection_step gc:bad_publish_retired_step gc:bad_young_collect_step; do
+for control in publication:bad_publication_step publication:bad_seal_step publication:bad_atomic_step publication:bad_duplicate_step publication:bad_foreign_object_step publication:bad_undurable_step publication:bad_unprotected_step publication:bad_foreign_step publication:bad_mixed_step publication:bad_missing_step publication:bad_interval_step publication:bad_plan_step publication:bad_plan_revision_step publication:bad_parent_step publication:bad_revision_step fencing_and_outcomes:bad_reuse_step fencing_and_outcomes:bad_refresh_step fencing_and_outcomes:bad_fencing_step fencing_and_outcomes:bad_reply_step fencing_and_outcomes:bad_retry_step gc:bad_stage_retire_step gc:bad_pin_step gc:bad_retire_step gc:bad_resurrection_step gc:bad_publish_retired_step gc:bad_young_collect_step gc:bad_unretired_collect_step; do
   invariant=${control%%:*}
   step=${control#*:}
   bound=8
