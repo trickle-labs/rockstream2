@@ -29,7 +29,7 @@ CDC, incremental joins and grouped aggregates, durable publication, consistent
 reads and simple operation. Move selected workloads when their applicable gates
 pass, while other workloads remain on the old engine. Broad feature parity is
 not a prerequisite for that scoped delivery; every feature in a selected unit
-must still have complete correctness, recovery and operational evidence.
+must still have complete correctness, recovery and operational evidence. Keep the current engine supported and operational, with rollback capacity for each migrating unit. Use the existing [partner decision record](requirements.md#1-users-and-workloads) to establish the workload-specific migration benefit and its comparable baseline; no forced fleet cutover, and no migration on synthetic performance evidence or a partial capability pass alone.
 
 ### Donor assets and regression transfer
 
