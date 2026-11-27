@@ -60,6 +60,13 @@ protection state that survives later preparation. Speculative metadata upload
 before seal durability is allowed as a conservative diagnostic overapproximation;
 publication still requires a durable seal.
 
+The single modeled metadata page can represent the complete compact immutable
+manifest of the initial serialized baseline. Its allocation-generation and
+protection behavior are assumptions of this abstraction; they do not select or
+require a paged metadata tree. The model does not cover a multi-page tree or its
+dependency graph. Paging remains an evidence-triggered extension under
+[ADR 0014](../../docs/adr/0014-incremental-delivery-and-earned-complexity.md).
+
 Coverage mutants bypass receipt validation at sealing and publication while
 retaining the seal-integrity comparison. Witnesses require invalid missing,
 duplicate, mixed-attempt, interval-mismatch and plan-mismatch sets to be

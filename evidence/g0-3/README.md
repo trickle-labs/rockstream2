@@ -88,6 +88,13 @@ records the explicit bounds and remaining abstraction limits; independent
 review of this recovered candidate and its actual integration revision remains
 required.
 
+The modeled single metadata page can abstract the initial compact immutable
+manifest; it does not select or establish a paged tree. Its allocation-generation
+and protection behavior are model assumptions, and a multi-page dependency graph
+is outside this evidence. [ADR 0014](../../docs/adr/0014-incremental-delivery-and-earned-complexity.md)
+keeps paging evidence-triggered. These clarifications do not change the captured
+model, checks or inconclusive verdict.
+
 ## Namespace, seal and publisher boundaries
 
 On 2026-11-27, the model at integration candidate
