@@ -2,6 +2,8 @@
 
 **Status:** Proposed for review, 2026-11-27. Updates the working design under [issue #32](https://github.com/trickle-labs/rockstream2/issues/32). Supersedes the unconditional release sequence and bundled G3b acceptance in [ADR 0012](0012-staged-mechanism-adoption.md), the asymmetric storage-selection preference in [ADR 0004](0004-arrangement-storage.md), and the scope of the G0.4 resource decision in [ADR 0005](0005-runtime-selection.md). Other decisions remain in force except where explicitly refined below. No implementation, gate verdict or supported capability is promoted by this record.
 
+**Further refinement:** [ADR 0014](0014-incremental-delivery-and-earned-complexity.md) makes the delivery path executable in small increments, starts metadata with a compact manifest and one operation per CAS, and makes batching/paging conditional on measured need. It retains this record's independent capability/profile gates and unchanged safety obligations.
+
 ## Context
 
 Rockstream 2 aims to be a comprehensive cloud-native IVM database: exact SQL, workload-wide shared and factorized computation, disposable compute over durable cloud state, independent maintenance and serving, and economical operation from one binary. ADR 0012 already delays mechanisms until their first consumer, but three dependencies still put unnecessary work on the critical path:

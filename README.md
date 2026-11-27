@@ -24,7 +24,7 @@ Existing streaming databases typically force a painful trade-off between operati
 | [Requirements](docs/planning/requirements.md) | Product thesis, guarantees, target workloads, and honest profile SLOs |
 | [Implementation plan](docs/planning/implementation-plan.md) | The single roadmap: gate ladder, work IDs, exit evidence, and stop/pivot signals (`G0 → G1 → G2 → G3a`, independent IVM capabilities, and profile-based `G6-S`/`G6-D`) |
 | [Implementation start](docs/planning/implementation-start.md) | Two-track G0 kill-switch probes, canonical `W1-G` golden workload, and initial issue seeds |
-| [Decision records](docs/adr/README.md) | Architectural commitments, alternatives, and decision gates (`ADR 0001`–`0013`) |
+| [Decision records](docs/adr/README.md) | Architectural commitments, alternatives, and decision gates (`ADR 0001`–`0014`) |
 | [RockStyle](ROCK_STYLE.md) | Engineering constraints: types, release safety checks, bounds, and a small verification stack |
 | [Current-system audit](docs/research/current-system-audit.md) | Evidence-based comparison with Rockstream v1 |
 | [Implementation experience report](docs/research/implementation-experience-report.md) | Lessons from Rockstream v1's delivery history, verification, and CI |
@@ -34,7 +34,7 @@ Existing streaming databases typically force a painful trade-off between operati
 | Document | Questions it answers |
 | --- | --- |
 | [Semantics and compiler](docs/design/semantics-and-compiler.md) | What does a query mean, how is it incrementalized, and what makes a rewrite safe? |
-| [Consistency and storage](docs/design/consistency-and-storage.md) | What is durable, how do compositional metadata CAS, immutable deltas, SlateDB indexes, logical MVCC, reader leases (G4), and grace-window GC work? |
+| [Consistency and storage](docs/design/consistency-and-storage.md) | What is durable, how do single-root metadata CAS, measured batching, immutable deltas, SlateDB indexes, logical MVCC, reader leases (G4), and grace-window GC work? |
 | [Runtime and operations](docs/design/runtime-and-operations.md) | How do execution, memory/spill, connectors, view fault isolation, elasticity, suspension, and DR work? |
 | [Testing and verification](docs/design/testing-and-verification.md) | How do we verify semantics and protocols pragmatically at the lowest effective layer? |
 | [Development workflow](docs/design/development-workflow.md) | How do we keep PR CI fast (<5 min) while running deep verification asynchronously? |
@@ -48,6 +48,8 @@ Existing streaming databases typically force a painful trade-off between operati
 ## Incremental build philosophy
 
 Build Rockstream 2 **step by step** from one executable vertical slice. [ADR 0013](docs/adr/0013-minimum-mechanisms-and-independent-qualification.md) preserves the ambition of workload-wide cloud-native IVM while removing unrelated release dependencies: single-node production can qualify without distribution, and useful sharing/factorization can qualify without independent scheduling. Every profile keeps its full applicable correctness, recovery, security, resource and economic evidence. Each mechanism is adopted at the first gate whose acceptance needs it ([ADR 0012](docs/adr/0012-staged-mechanism-adoption.md)); every gate ends in an artifact a named audience can run. The [implementation plan](docs/planning/implementation-plan.md) is the single authority for gate contents, exit evidence, and stop/pivot signals; this is the summary.
+
+[ADR 0014](docs/adr/0014-incremental-delivery-and-earned-complexity.md) defines the next concrete simplification: a compact metadata manifest and one operation per root CAS, with batching/paging earned by measured need. Follow the [runnable increments](docs/planning/implementation-plan.md#incremental-build-sequence) from exact semantics through durable accept/publish/read/recover, complete the preview, then prove a selected shared or factorized gain. An internal demonstration does not qualify a preview, and early cost diagnostics do not replace the real-partner production gate.
 
 | Gate | Release artifact | Headline scope |
 | --- | --- | --- |
