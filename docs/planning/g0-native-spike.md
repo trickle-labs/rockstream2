@@ -51,7 +51,12 @@ allocator or a reservation of process memory. The fixed state slots and clone ar
 the `result()` convenience method separately constructs an allocated map. The
 scratch cap accounts for the four owned vector capacities, not allocator
 metadata, stack, Arrow buffers, the convenience map, shared input, or process
-headroom. The reservation regression forces a capacity-overflow error; it does
+headroom. At the 256-row output limit, the logical Arrow values and offsets
+alone are at most 17,412 bytes: 256 rows times 32 region bytes, 8 count bytes,
+16 revenue bytes and 8 weight bytes, plus 257 four-byte UTF-8 offsets. This is
+not an allocation bound: it excludes alignment, capacity rounding, Arrow and
+schema objects, temporary buffers and allocator metadata. The reservation
+regression forces a capacity-overflow error; it does
 not simulate a physical OOM. Output also constructs `StringArray::from(Vec<&str>)`: in pinned
 `arrow-array` 59.3.2, that calls `GenericByteArray::from_iter_values`, which
 creates/grows `arrow-buffer` `MutableBuffer`s. In pinned `arrow-buffer` 59.3.2,
