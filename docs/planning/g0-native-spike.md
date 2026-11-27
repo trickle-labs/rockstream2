@@ -113,6 +113,18 @@ The archive and this evidence paragraph were added after that tested source;
 they do not modify the kernel. They do not replace checks of the final
 integration revision.
 
+At source `74c1abfd6afeb7de371dee5df3ca4b730aed16b0`, the
+PostgreSQL-backed fast gate passed with a fresh target and `PYTHONOPTIMIZE=1`;
+21 release tests and the compile-fail doctest also passed. A stale-snapshot
+regression distinguishes bounded contention from an observed full budget;
+an isolated retry-on-conflict mutant failed that test. A separate wide nested
+input regression failed before validation was reordered and passes afterward.
+[Raw commands and results](../../evidence/g0-4/logical-admission-74c1abf.tar.gz)
+have SHA-256 `2292a48598c01393358962dc6dd36ddcb559642c716d60313e253ed01647d716`.
+The archive records an initial test type-inference build error separately from
+the behavioral failing-before case. It and this paragraph were added after the
+tested source; they do not modify the kernel or replace final integration checks.
+
 ### Output lifetime admission experiment
 
 A shared output budget admits at most two outstanding outputs across kernels
