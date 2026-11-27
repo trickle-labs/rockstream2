@@ -5,7 +5,9 @@ partitions and one reclaimable object, not the production metadata implementatio
 Publication atomically updates both visible partition flags and the root after
 checking the root revision, publication parent, owner generation, complete
 receipt set, receipt attempts, staged-object durability, staging protection and
-object retirement state. Ownership reassignment atomically registers the new
+object retirement state. It also checks Active, run incarnation, catalog
+revision, accepted durable input and proof, and the allocation generation and
+base revision of the uploaded metadata page. Ownership reassignment atomically registers the new
 owner generation's open namespace. The prepared logical publisher is bound
 to the seal and compared with the current authorized publisher. Authenticated
 publisher identity is assumed; credential forgery is not modeled. An arbitrary
@@ -23,7 +25,7 @@ compete through CAS, and must refresh and revalidate after conflict. Collection
 also requires abstract object age 2.
 
 The model bounds are two publication operation IDs, two monotonic attempt IDs,
-two owner generations, root revisions 0–4 (four advances), participants `{1, 2}` plus
+two owner generations, root revisions 0–5 (five advances), participants `{1, 2}` plus
 foreign `3`, and one object and pin. Partitions arrive independently. Each
 receipt scope encodes `(interval, plan)` as `(1,1)`, `(2,1)` or `(1,2)`; the
 prepared interval is fixed at 1 and the plan can advance from 1 to 2. This
@@ -46,6 +48,18 @@ cannot be retired. Publication requires the staged closure to be durable and
 protected and installs a root reference in the same transition. These bits do
 not implement an upload, inspect bytes, or model a full object graph.
 
+The input segment becomes durable before an acceptance CAS binds its proof and
+upper. The sealed request binds that proof and its upper, which publication
+checks against accepted input. This single acceptance can cover upper 1 or stop
+at upper 0; later input advancement is not modeled. Metadata page upload is a
+separate action that records the allocation generation and base root revision.
+A root advance requires rebuilding the page, while closure of an allocation
+generation makes an unselected old-generation page ineligible. Closure does not
+model a tombstone or physical deletion. The selected root page has separate
+protection state that survives later preparation. Speculative metadata upload
+before seal durability is allowed as a conservative diagnostic overapproximation;
+publication still requires a durable seal.
+
 Coverage mutants bypass receipt validation at sealing and publication while
 retaining the seal-integrity comparison. Witnesses require invalid missing,
 duplicate, mixed-attempt, interval-mismatch and plan-mismatch sets to be
@@ -67,10 +81,18 @@ protection view with bypassing the final namespace check; it advances the root
 and requires a refresh before the invalid publication. With the additional
 namespace fence, stale-owner and unprotected-publication mutants also bypass
 that independent fence and are compound controls.
+Additional controls cover Active, run, catalog, input acceptance, proof and
+upper, stale page content, allocation generation and selected root protection.
+Invalid input controls bypass both seal-time and publication validation;
+the closed-generation control combines stale upload with final guard bypass.
+The stale-revision single bypass remains safe within the checked bound because
+the page-base guard masks it. A separate compound control bypasses both guards
+and witnesses a stale revision and page at the actual commit.
 The retired-publication mutant bypasses
 retirement, staging-protection and namespace guards: normal protected staging prevents the
 retired state from being reached, so this is a compound-fault control. Each
-mutant must produce a counterexample.
+negative control in the control loop must produce a counterexample; the masked
+single revision bypass is checked for safety separately.
 
 With Node, Java and Quint 0.34.0 installed, run:
 
@@ -79,10 +101,10 @@ models/g0/check.sh
 ```
 
 Quint downloads Apalache 0.62.4 on first use and starts a local server. The
-script checks invariants through thirteen steps and checks bounded reachability
-witnesses and mutants; each mutant must produce an actual counterexample.
-Most witnesses and mutants use a ten-step bound; selected witnesses and
-controls use up to fifteen steps to cover staged-data and seal durability and
+script checks invariants through sixteen steps and checks bounded reachability
+witnesses and mutants. Most witnesses and mutants use a thirteen-step bound;
+selected witnesses and controls use up to nineteen steps to cover staged-data,
+input acceptance, metadata-page and seal durability and
 repeated attempts. See the script for the exact bound of each check. The corruption faults change a stored
 outcome to the nonzero, later root revision; missing-outcome faults remain
 separate. Infrastructure errors do not count as negative-control success.
@@ -90,13 +112,14 @@ Apalache is symbolic and does not report an enumerated state count. Separately,
 `models/g0/count-states.sh` runs a depth-3 exhaustive TLC exploration using
 Quint 0.34.0 and its Apalache 0.62.4 distribution. It appends a depth variable
 and wrapper actions to the same model without modifying its transitions. The
-revised publisher-aware run explored 6,260 distinct depth-tagged
-configurations (21,075 generated, zero queued); a protocol state reached at
-multiple depths is counted multiple times. The [evidence](../../evidence/g0-3/README.md#namespace-seal-and-publisher-boundaries)
-records this run; no projected count was computed for the revised model. The
-[earlier projection](../../evidence/g0-3/README.md#depth-3-state-count) applies
-only to the older model. Neither count applies to the thirteen-step symbolic
-check. `QUINT` may name a non-default executable.
+recovered current-source run explored 16,490 distinct depth-tagged
+configurations (50,117 generated, zero queued); a protocol state reached at
+multiple depths is counted multiple times. The [evidence](../../evidence/g0-3/README.md#recovered-publication-boundary-run)
+records this run and the source recovery. The earlier 6,260 count and
+[projection](../../evidence/g0-3/README.md#depth-3-state-count) apply only to
+older models. No projection was computed for this model, and none of these
+counts enumerates the sixteen-step symbolic check. `QUINT` may name a
+non-default executable.
 
 The abstraction models receipt identities, object references, scopes, atomic
 sealing and one combined data/recovery durability fact, not receipt payload
