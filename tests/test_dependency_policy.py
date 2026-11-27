@@ -1,5 +1,6 @@
 """Exercise dependency policy against Cargo's real optional-feature graph."""
 import os
+import re
 import shutil
 from pathlib import Path
 import subprocess
@@ -28,10 +29,23 @@ class DependencyPolicy(unittest.TestCase):
             subprocess.run(['cargo', 'generate-lockfile', '--offline'], cwd=root,
                            check=True, capture_output=True, env=env)
             checker = (ROOT / 'scripts' / 'check-dependencies.py').read_text()
-            checker = checker.replace('{"w1g-oracle": set()}',
-                                      '{"w1g-oracle": set(), "other": set()}')
+            checker, replacements = re.subn(r'^ALLOWED = .+$',
+                                            'ALLOWED = {"w1g-oracle": set(), "other": set()}',
+                                            checker, flags=re.MULTILINE)
+            self.assertEqual(replacements, 1)
             script = root / 'check-dependencies.py'
             script.write_text(checker)
+            manifest = root / 'w1g-oracle' / 'Cargo.toml'
+            with_optional = manifest.read_text()
+            manifest.write_text(with_optional.replace('other={path="../other",optional=true}\n', ''))
+            subprocess.run(['cargo', 'generate-lockfile', '--offline'], cwd=root,
+                           check=True, capture_output=True, env=env)
+            baseline = subprocess.run([sys.executable, script], cwd=root, env=env,
+                                      capture_output=True, text=True, check=False)
+            self.assertEqual(baseline.returncode, 0, baseline.stderr)
+            manifest.write_text(with_optional)
+            subprocess.run(['cargo', 'generate-lockfile', '--offline'], cwd=root,
+                           check=True, capture_output=True, env=env)
             result = subprocess.run([sys.executable, script], cwd=root, env=env,
                                     capture_output=True, text=True, check=False)
             self.assertNotEqual(result.returncode, 0, result.stdout)

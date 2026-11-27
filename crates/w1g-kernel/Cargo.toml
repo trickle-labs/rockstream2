@@ -1,0 +1,19 @@
+[package]
+name = "w1g-kernel"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+arrow-array = "=59.3.2"
+arrow-buffer = "=59.3.2"
+arrow-schema = "=59.3.2"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "deny"
+
+[dev-dependencies]
+w1g-oracle = { path = "../w1g-oracle" }
