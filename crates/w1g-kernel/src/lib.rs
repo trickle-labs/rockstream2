@@ -1086,4 +1086,28 @@ mod tests {
         );
         assert_eq!(kernel, before);
     }
+
+    #[test]
+    fn bounded_fanout_repeated_retractions_match_batch_oracle() {
+        let mut kernel = kernel();
+        let initial_orders: Vec<_> = (0..127).map(|id| (id, 1, 100, 1)).collect();
+        kernel
+            .apply(0, &customers(&[(1, "N", 1)]), &orders(&initial_orders))
+            .unwrap();
+
+        let changes: Vec<_> = (0..MAX_ROWS)
+            .map(|i| (1, "N", if i % 2 == 0 { -1 } else { 1 }))
+            .collect();
+        let delta = kernel.apply(1, &customers(&changes), &orders(&[])).unwrap();
+        assert_eq!(delta.num_rows(), 0);
+
+        let oracle_customers = BTreeMap::from([(1, "N".to_owned())]);
+        let oracle_orders = (0..127).map(|id| (id, (1, 100))).collect();
+        let expected = w1g_oracle::evaluate(&oracle_customers, &oracle_orders)
+            .into_iter()
+            .map(|(region, (count, cents))| (region, (count, i128::from(cents))))
+            .collect();
+        assert_eq!(snapshot(&kernel), expected);
+        assert_eq!(kernel.ungrouped_count().unwrap().values(), &[127]);
+    }
 }

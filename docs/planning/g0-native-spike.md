@@ -53,6 +53,41 @@ required for a feasibility decision; complete runtime resource evidence remains 
 not qualify resource admission. Do not infer the predeclared fallback trigger solely from missing
 measurements.
 
+### Logical feasibility envelope for review
+
+The caller owns the input `RecordBatch` values and must separately account for
+their backing allocations. The kernel borrows them only for `apply` and does
+not retain them. The existing 16 KiB check uses Arrow's reported array memory;
+it is a conservative rejection check for that report, not proof of arbitrary
+custom-owner allocation size. For an accepted interval, the row and region
+limits independently bound the logical input value and UTF-8 offset payload to
+6,660 bytes: at most 128 customer rows, each with two 8-byte integers, at most
+32 UTF-8 bytes and one 4-byte offset, plus one final offset. An order row has
+four 8-byte integers and is smaller. This excludes Arrow metadata, unused or
+shared backing capacity and caller memory, all still open for G2 qualification.
+
+One `&mut Kernel` processes one scalar epoch synchronously, with no internal
+input queue. An interval has at most 128 input iterations and 128 retained
+customer/order rows. Each customer change scans at most 128 order slots; each
+order change performs at most one group adjustment. Thus there are at most
+`128 * 128 + 128 = 16,512` group adjustments per admitted interval, each
+scanning at most three fixed 128-slot group arrays. The two output-comparison
+loops each visit at most 128 groups and probe at most 128 slots per group.
+Other map probes and temporary arrays are also fixed at 128 slots. These are
+conservative work bounds, not elapsed-time or physical-allocation guarantees.
+The focused `bounded_fanout_repeated_retractions_match_batch_oracle` test uses
+one customer, 127 matching orders and 128 alternating customer changes; it
+checks the zero delta, complete state and ungrouped count against an independent
+batch result. Exhausted logical state, scratch and output admission return an
+error without committing the tentative epoch; retained output buffers remain
+charged until their final reference is dropped, as tested below.
+
+These statements describe the logical boundary only. The kernel does not
+enforce a process-wide input-ownership policy, and the output budget is shared
+only by kernels given the same budget. A new independently reviewed feasibility
+verdict remains necessary; neither this envelope nor the new test qualifies
+allocator failure, shared physical bytes or process headroom.
+
 ### Output lifetime admission experiment
 
 A shared output budget admits at most two outstanding outputs across kernels
