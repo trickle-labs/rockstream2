@@ -28,8 +28,11 @@ ungrouped `COUNT`. The separately run PostgreSQL oracle checks the same frozen
 cuts. Retractions and simultaneous customer/order updates exercise the join
 cross-term. The exact source passed 21 kernel unit tests and a compile-fail
 doctest in debug and release, and the PostgreSQL-backed optimized-Python fast
-gate. A separate agent independently ran the kernel tests and doctest and
-reviewed the candidate; it did not independently rerun PostgreSQL or release.
+gate. As recorded in [PR #41's review](https://github.com/trickle-labs/rockstream2/pull/41),
+a separate agent independently reviewed the candidate and ran
+`CARGO_TARGET_DIR=/Users/grove/.p2p/g04-review-target cargo test -p w1g-kernel --locked --offline`;
+the 21 unit tests and doctest passed. It did not independently rerun PostgreSQL
+or release tests.
 
 The [logical-envelope evidence](../../docs/planning/g0-native-spike.md#logical-feasibility-envelope-for-review)
 documents a worst-fanout case checked against an independent batch result, and
