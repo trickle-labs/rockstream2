@@ -13,9 +13,14 @@ def rows(name):
 
 transactions = rows('transactions.csv')
 expected = rows('expected.csv')
+for row in transactions:
+    if len(row) != 6 or int(row[0]) not in range(4):
+        raise ValueError('invalid fixture epoch')
 for row in expected:
     if len(row) != 4 or row[1] not in ('North', 'South'):
         raise ValueError('invalid expected region')
+    if int(row[0]) not in range(5):
+        raise ValueError('invalid expected cut')
 sql = ['CREATE TEMP TABLE customers (id bigint primary key, region text COLLATE "C" NOT NULL);',
        'CREATE TEMP TABLE orders (id bigint primary key, customer bigint NOT NULL, amount numeric(18,2) NOT NULL);']
 query = 'SELECT c.region, count(*)::bigint AS n, sum(o.amount) AS revenue FROM customers c JOIN orders o ON c.id=o.customer GROUP BY c.region'
