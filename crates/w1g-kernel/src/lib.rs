@@ -1105,6 +1105,7 @@ mod tests {
             })
             .collect();
         let delta = kernel.apply(1, &customers(&changes), &orders(&[])).unwrap();
+        assert_eq!(delta.num_rows(), 2);
         let regions = delta
             .column(0)
             .as_any()
