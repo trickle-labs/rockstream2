@@ -75,9 +75,10 @@ and wrapper actions to the same model without modifying its transitions. The
 recorded run explored 11,782 distinct depth-tagged configurations (40,383
 generated, zero queued); a protocol state reached at multiple depths is counted
 multiple times. The [evidence](../../evidence/g0-3/README.md#idempotency-controls)
-records the run. An earlier projection is scoped to its older model, not this
-run. This count does not apply
-to the eleven-step symbolic check. `QUINT` may name a non-default executable.
+records this run; no projected count was computed for it. The
+[earlier projection](../../evidence/g0-3/README.md#depth-3-state-count) applies
+only to the older model. Neither count applies to the eleven-step symbolic
+check. `QUINT` may name a non-default executable.
 
 The abstraction models receipt identities, object references, scopes, atomic
 sealing and one combined data/recovery durability fact, not receipt payload
