@@ -55,7 +55,7 @@ The initial workspace, frozen W1-G fixture, independent batch and PostgreSQL
 checks, negative controls, and seeded donor register are available for review.
 The bounded observations and exact source identities are recorded in
 [preliminary G0.1 evidence](../../evidence/g0-1/preliminary.md). They do not
-approve the implementation, qualify the integration revision, or unlock G1;
-integration checks and G0.4 remain required, and the human reviews the
-completed milestone. This observation does not change the decisions or
-invariants in this ADR.
+approve the implementation or unlock G1. Successful checks on actual main
+integration revisions are now recorded alongside a queue-inclusive timing
+miss; G0.4 remains required, and the human reviews the completed milestone.
+This observation does not change the decisions or invariants in this ADR.
