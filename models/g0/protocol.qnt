@@ -1,4 +1,5 @@
 // A finite abstraction: two publication attempts, two owner generations and one GC object.
+// Depth-3 TLC: 11,746 depth-tagged configurations; separate Apalache symbolic bound: 11 steps.
 module protocol {
   type State = {
     head: int, publicationHead: int, planRevision: int, preparedPlan: int, generation: int, prepared: bool, parent: int, revision: int, owner: int, preparedGeneration: int, refreshed: bool,

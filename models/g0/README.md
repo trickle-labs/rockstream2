@@ -58,8 +58,15 @@ script checks invariants through eleven steps and checks bounded reachability
 witnesses and mutants; each mutant must produce an actual counterexample.
 Witnesses and mutants use an eight-step bound, except the ten-step compound
 retired-publication witness/control and the eleven-step duplicate-retry mutant. Infrastructure errors do not count as negative-control success.
-Apalache is symbolic and does not report an enumerated state count. `QUINT` may
-name a non-default Quint executable.
+Apalache is symbolic and does not report an enumerated state count. Separately,
+`models/g0/count-states.sh` runs a depth-3 exhaustive TLC exploration using
+Quint 0.34.0 and its Apalache 0.62.4 distribution. It appends a depth variable
+and wrapper actions to the same model without modifying its transitions. The
+recorded run explored 11,746 distinct depth-tagged configurations (40,375
+generated, zero queued); a protocol state reached at multiple depths is counted
+multiple times. The [evidence](../../evidence/g0-3/README.md#depth-3-state-count)
+records the run and a separately scoped projection. This count does not apply
+to the eleven-step symbolic check. `QUINT` may name a non-default executable.
 
 The abstraction models receipt identities, object references, scopes, atomic
 sealing and one combined data/recovery durability fact, not receipt payload
