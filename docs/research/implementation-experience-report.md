@@ -210,7 +210,7 @@ Use the existing issue and PR templates; the following prompts are not a new for
 - **Scope:** what is deliberately unsupported, and how does the executable reject it? Is there a new permanent compatibility or maintenance commitment?
 - **Integration:** which gate and canonical document own this promise? What remains unqualified after merge? Is a narrower safe slice possible?
 
-For low-risk changes this can be a few lines. A high-risk change requires the corresponding detailed contract and evidence, independent review and maintainer authorization. A bigger generated report is not a substitute for a test or a decision.
+For low-risk changes this can be a few lines. A high-risk change requires the corresponding detailed contract and evidence and independent agent review before integration; the human reviews the completed milestone. A bigger generated report is not a substitute for a test or a decision.
 
 ### 6.2. Measure engineering progress rather than activity
 
