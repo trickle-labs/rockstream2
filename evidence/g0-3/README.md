@@ -1,5 +1,46 @@
 # G0.3 bounded model runs
 
+## Namespace, seal and publisher boundaries
+
+On 2026-11-27, the model at integration candidate
+`f49b2fc66e17d3a73457adcba54b25ff7e5c32b2` modeled owner-generation namespace
+registration, explicit staged-data and seal durability, bounded retry
+deferral, and a sealed logical publisher checked against the current root. The
+authenticated publisher is assumed; signature forgery is outside this model.
+An independent committer may submit the operation and grants no authority.
+Allowing an unauthorized logical publisher to prepare in the namespace is an
+overapproximation, not a statement about storage access control.
+
+The model SHA-256 was
+`3a817ec9db7d0a8bef5091168475fc0f8d676f704f33f20242f38f78712f9592`;
+the check script SHA-256 was
+`8ac098a5408e8fede8be2c18e233fd617b3793d74a4a807c38379f9ee2c1cae8`.
+The complete source-hashed suite exited zero: 83 invocations, including the
+thirteen-step invariant check, 38 expected negative-control counterexamples,
+and 81 checks with parseable traces. Separate depth-three TLC exploration
+reported 21,075 generated, 6,260 distinct depth-tagged configurations and
+zero queued; this is not a count of the thirteen-step symbolic state space.
+Quint 0.34.0, Apalache 0.62.4, Node 26.13.1 and OpenJDK 21.0.13.1 ran on
+Darwin arm64. The [raw evidence](namespace-publisher-raw-run.tar.gz) has
+SHA-256 `0d1d61a142365276793d3f29b91d6698ce4853e792f2fe4905e9cda655a906b5`.
+
+One earlier full attempt stopped at invocation 71 with a verifier `error:` and
+no counterexample marker; its detailed log stops at Z3 context creation. A local `df` check reported approximately 116 MiB free when investigated;
+that observation was not separately archived. After removing
+three disposable build targets, an isolated verbose run on identical source
+produced the expected duplicate-effect counterexample, and the complete fresh
+suite passed with more free space. The original error's cause is **unclassified**;
+it is not asserted to be disk exhaustion. The raw archive preserves the failed
+run, diagnostic, and complete fresh run separately. Two superseded source runs
+were stopped deliberately and are also retained as incomplete, not passes.
+The archive excludes macOS AppleDouble provenance metadata; all 2,650
+substantive files were compared with their source contents.
+
+The [model README](../../models/g0/README.md) specifies finite bounds and
+compound-fault controls. This observation does not qualify G0.3, a storage
+implementation or a provider; M2 batching, the full metadata graph, and real
+time and physical deletion remain outside the checked model.
+
 ## Idempotency controls
 
 On 2026-11-27, bounded experiments against the prior invariant exposed three

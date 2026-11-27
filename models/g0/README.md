@@ -92,8 +92,8 @@ Quint 0.34.0 and its Apalache 0.62.4 distribution. It appends a depth variable
 and wrapper actions to the same model without modifying its transitions. The
 revised publisher-aware run explored 6,260 distinct depth-tagged
 configurations (21,075 generated, zero queued); a protocol state reached at
-multiple depths is counted multiple times. The [evidence](../../evidence/g0-3/README.md#idempotency-controls)
-records the earlier run; no projected count was computed for the revised model. The
+multiple depths is counted multiple times. The [evidence](../../evidence/g0-3/README.md#namespace-seal-and-publisher-boundaries)
+records this run; no projected count was computed for the revised model. The
 [earlier projection](../../evidence/g0-3/README.md#depth-3-state-count) applies
 only to the older model. Neither count applies to the thirteen-step symbolic
 check. `QUINT` may name a non-default executable.
