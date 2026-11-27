@@ -5,6 +5,16 @@ pass, an ADR decision or a supported runtime. G0.1 has merged into main at
 `43b084989c166620d1f518ef7ea7c8fbc6c50406`; this candidate integrates that
 revision and must be checked again against the actual integration revision.
 
+## Scope of the next decision
+
+[ADR 0013](../adr/0013-minimum-mechanisms-and-independent-qualification.md) separates the G0.4 **native feasibility** verdict from **runtime resource qualification**. A revised feasibility review covers exact `W1-G`/`Q(empty)` results, retractions and cross-terms, acyclic scalar-epoch progress, state ownership across success/failure, and explicit logical admission/queue/output-lifetime bounds. It must name the trusted input-attribution boundary; self-reported Arrow byte counts alone do not bound arbitrary external buffers. This decision change does not turn the recorded inconclusive experiment into a pass. A new independently reviewed verdict and ADR update are required before the foundation track unlocks G1.
+
+The allocation failures and input-attribution counterexample below remain open blockers for any G2 runtime preview. Before qualifying that runtime, account for all resident/temporary/shared/dependency bytes, actual allocation and overload behavior, cancellation/control reserves and process headroom; prove the declared controlled-error or process-isolation/recovery behavior on the complete admitted path. A logical budget or small RSS observation cannot satisfy that gate. G1 semantic work may proceed after its revised foundation prerequisites pass while this work is tracked explicitly; it cannot advertise a safe production allocator or runtime.
+
+Keep the spike disposable and bounded. Carry useful semantic tests and ownership findings into P1.3; do not keep adding production allocator infrastructure merely to close G0.4. A dependency allocation failure by itself does not establish the native scheduler wall or that Timely/Differential would fix it. The fallback decision requires the predeclared semantic, logical-bound or progress/ownership blocker and a bounded comparison.
+
+## Recorded experiment
+
 The prototype applies customer deltas against the old order state, followed by
 order deltas against the updated customer state. The latter includes the
 simultaneous-input cross-term. It accumulates grouped counts and integer-cent
@@ -38,8 +48,8 @@ oracle. The separate G0.1 PostgreSQL replay checks the same fixture. Local
 fast checks passed against a disposable PostgreSQL instance; exact candidate,
 commands and observations are in the PR. This evidence does not establish
 performance, general SQL, durable state, cloud operation, or proof that all
-resource exhaustion is safe. Independent review, a qualified resource contract and an ADR update remain
-required for a feasibility decision. The prior small-fixture RSS observations do
+resource exhaustion is safe. Independent review of the revised feasibility scope, explicit logical resource contracts and an ADR update remain
+required for a feasibility decision; complete runtime resource evidence remains required before G2 preview qualification. The prior small-fixture RSS observations do
 not qualify resource admission. Do not infer the predeclared fallback trigger solely from missing
 measurements.
 

@@ -1,6 +1,6 @@
 # ADR 0011: pragmatic risk reduction and lean G0 validation
 
-**Status:** Proposed for review, 2026-11-26. Refines ADRs [0003](0003-publication-and-metadata.md)–[0010](0010-operation-and-hibernation.md) to eliminate physics contradictions, storage impedance mismatch, and pre-implementation G0 bloat. Gate placement is further refined by [ADR 0012](0012-staged-mechanism-adoption.md).
+**Status:** Proposed for review, 2026-11-26. Refines ADRs [0003](0003-publication-and-metadata.md)–[0010](0010-operation-and-hibernation.md) to eliminate physics contradictions, storage impedance mismatch, and pre-implementation G0 bloat. Gate placement is further refined by [ADR 0012](0012-staged-mechanism-adoption.md); [ADR 0013](0013-minimum-mechanisms-and-independent-qualification.md) supersedes the bundled G3b/release sequence, storage-selection preference and G0.4 scope.
 
 ## Context
 
@@ -10,7 +10,7 @@ Building a reliable, economical cloud-native IVM database requires **proving the
 
 ## Decisions
 
-The mechanism choices in this record remain in force, but their adoption gates are restaged by ADR 0012. Reader leases and grace-window GC arrive with out-of-process readers at G4; arbitrary-cut logical MVCC arrives at G3b. G0 is split so its foundation track unlocks G1 while its durability-physics track runs in parallel and unlocks G2. Invariants are unchanged.
+The mechanism contracts in this record remain in force when selected, with adoption restaged by ADRs 0012 and 0013. The hybrid storage layout remains a candidate until the neutral G0.2 selection; native feasibility is separate from mandatory physical runtime evidence before G2 preview qualification. Reader leases and grace-window GC arrive with out-of-process readers at G4; arbitrary-cut logical MVCC arrives at G3b-I. G0 is split so its foundation track unlocks G1 while its durability-physics track runs in parallel and unlocks G2. Invariants are unchanged.
 
 | Area | Earlier trap | Practical decision |
 | --- | --- | --- |
@@ -20,7 +20,7 @@ The mechanism choices in this record remain in force, but their adoption gates a
 | Direct DML & poison records | Hidden two-store PK index atomicity; single derived view overflow wedged an entire domain or pinned shared history forever | Uniform checkpoint + input-log overlay for Direct-DML PK index; default per-view result publication head (explicit `publication_group` when joint atomicity is required) with quota-bounded quarantine pins |
 | Hibernation | Full zero-process sleep constrained online low-latency/CDC profiles that cannot hibernate anyway | Stateless compute scales to zero on all profiles; full zero-process hibernation is an Object-Native capability for eligible workloads |
 | Runtime selection | Mandatory upfront double-build of native AND Timely/Differential before G1 | Build and validate the lean acyclic scalar-epoch native kernel in G0.4 (with Rockstream-owned checked widened numeric accumulators); only prototype Timely/Differential if native hits a concrete predeclared wall |
-| Gate sequencing & optimizer | Overloaded G3 with premature 9-term monetary cost advisor while `LEFT JOIN`/`DISTINCT` waited for G5; delete-safe `MIN`/`MAX` bloated G2 | Move `MIN`/`MAX` out of G2; split G3 into **G3a** (table-stakes SQL: `LEFT JOIN`, `DISTINCT`, semi/anti joins, `MIN`/`MAX` + live PG CDC with additive-DDL tolerance, Kafka, subscriptions) and **G3b** (shared engine, MVCC, rule-based isolation, eligible F-IVM); defer monetary cost advisor to G5 |
+| Gate sequencing & optimizer | Overloaded G3 with premature 9-term monetary cost advisor while `LEFT JOIN`/`DISTINCT` waited for G5; delete-safe `MIN`/`MAX` bloated G2 | Move `MIN`/`MAX` out of G2; split G3 into **G3a** (table-stakes SQL: `LEFT JOIN`, `DISTINCT`, semi/anti joins, `MIN`/`MAX` + live PG CDC with additive-DDL tolerance and subscriptions; Kafka independently selected) and **G3b-S/F/I/P** (separable sharing, factorization, independent consumers and measured pipelining); defer monetary cost advisor to G5 |
 | Verification & review | Contradictory Quint vs. FizzBee tooling; pretending a simulator covers Tokio/SlateDB/S3; auto-merging unbridged `rock-meta`/`rock-state` internals | Standardize on **Quint** + `proptest` + independent PostgreSQL/batch oracle + pure state-machine replay + **real-process/real-backend crash tests**; keep core protocol/recovery (`rock-meta`, `rock-state`) at High risk with independent agent safety review and required evidence before integration, followed by human milestone review |
 | G0 scope | 10 heavy work packages + 1,000-view benchmarks + full hibernation + joint harness before G1 | Cut G0 to **4 focused kill-switch deliverables (G0.1–G0.4)** in two tracks; the timebox bounds scope, not delivery. The foundation track unlocks G1, durability physics unlocks G2; move reader-lease probes to G4.0, sharing benchmarks to G3b, single-process hibernation to G2, fleet-wide drain and activation to G4, and heavy governance to actual need |
 

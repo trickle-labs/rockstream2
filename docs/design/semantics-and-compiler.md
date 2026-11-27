@@ -2,6 +2,10 @@
 
 **Status:** proposed design; no Rockstream 2 engine or SQL capability is implemented by this documentation PR. **Date:** 2026-11-26. Read [DESIGN.md](../../DESIGN.md) first and [SQL and API contracts](../reference/sql-and-apis.md) for the proposed public surface. The G0–G6 labels refer to the [implementation gates](../planning/implementation-plan.md), not release promises. G5 is an advanced capability track: each feature must qualify independently and need not block G6 production qualification of a smaller surface.
 
+## Capability adoption
+
+[ADR 0013](../adr/0013-minimum-mechanisms-and-independent-qualification.md) preserves workload-wide IVM as the product goal while splitting its mechanisms: `G3b-S` qualifies canonical sharing inside one publication group with one cadence; `G3b-F` qualifies bounded eligible factorization; `G3b-I` qualifies independent schedules, arbitrary-cut history and online isolation; `G3b-P` qualifies evidence-triggered pipelining. A release selects only the capabilities needed for its declared workloads and qualifies their combination. The first-order baseline and exact semantic obligations remain mandatory.
+
 ## 1. The semantic contract
 
 Rockstream 2 is a SQL-first streaming database. Its internal unit of optimization is the whole admitted workload: compatible views can reuse subexpressions, arrangements and maintenance work while retaining their own freshness, retention and publication contracts. This internal computation model does not expand the initial public product into arbitrary user-defined distributed programs.
@@ -30,10 +34,10 @@ An input transaction supplies an atomic set of changes. Intermediate retractions
 
 ### Logical MVCC and bounded batching
 
-**Stage:** G2/G3a retain latest, pinned and a bounded recent set of published versions and promise published interval-boundary cuts. Full arbitrary-cut coverage `[S_hot, Cp]` is introduced at G3b ([ADR 0012](../adr/0012-staged-mechanism-adoption.md)).
+**Stage:** Profiles without `G3b-I` retain latest, pinned and a bounded recent set of published versions and promise published interval-boundary cuts. Full arbitrary-cut coverage `[S_hot, Cp]` is introduced at `G3b-I` ([ADR 0013](../adr/0013-minimum-mechanisms-and-independent-qualification.md)).
 
 Maintained relations and shared arrangements expose retained logical cuts independently of physical checkpoints. Let `S` be the inclusive earliest supported cut and `S_hot` the earliest fine-grained cut (`S <= S_hot <= Cp`):
-- In the **hot fine-grained window `[S_hot, Cp]` at G3b**, exact immutable delta segments support every logical cut `C` (including intermediate nonlinear results for `DISTINCT`, `MIN`/`MAX`, and outer joins):
+- In the **hot fine-grained window `[S_hot, Cp]` at G3b-I**, exact immutable delta segments support every logical cut `C` (including intermediate nonlinear results for `DISTINCT`, `MIN`/`MAX`, and outer joins):
 
 ```text
 R@C = R@S_hot + Σ_(S_hot <= e < C) ΔR_e, for S_hot <= C <= Cp
@@ -41,7 +45,7 @@ R@C = R@S_hot + Σ_(S_hot <= e < C) ΔR_e, for S_hot <= C <= Cp
 
 - In **longer retention `[S, S_hot)`**, periodic consolidated checkpoint bases (or explicitly budgeted archived deltas) bound state growth so hot keys do not accumulate unbounded uncoalesced per-epoch versions inside an LSM tree.
 
-Empty changes still carry progress and lineage. A published descriptor declares exact coverage; G2/G3a descriptors declare supported interval-boundary cuts, while G3b may advertise arbitrary cuts in its qualified hot window. Missing or expired cuts always return explicit errors rather than falling back to newer data. Consolidating across epochs is legal only below `S_hot` when no active pin or promised intermediate cut requires them.
+Empty changes still carry progress and lineage. A published descriptor declares exact coverage; descriptors without `G3b-I` declare supported interval-boundary cuts, while `G3b-I` may advertise arbitrary cuts in its qualified hot window. Missing or expired cuts always return explicit errors rather than falling back to newer data. Consolidating across epochs is legal only below `S_hot` when no active pin or promised intermediate cut requires them.
 
 ## 2. SQL meaning belongs to Rockstream
 
@@ -157,7 +161,7 @@ The compiler separates semantic IDs from physical IDs. A change in worker placem
 
 ## 5. Algorithm portfolio and arrangement sharing
 
-First-order delta execution is the mandatory baseline in G1–G3a. Eligible partial aggregation and factorization (F-IVM) are qualified in **G3b** as a bounded initial family with explicit algebraic side conditions, first-order semantic fallback, and matched lifetime benchmarks (including persistence and recovery). More general higher-order derivatives, multiway joins, recursion, and automated cost-model / adaptive plan replacement remain independently gated **G5** work. Every optimized algorithm must have a semantic fallback and a matched benchmark, or a clear capability rejection when no resource-safe fallback exists.
+First-order delta execution is the mandatory baseline in G1–G3a. Eligible partial aggregation and factorization (F-IVM) are qualified independently in **G3b-F** as a bounded initial family with explicit algebraic side conditions, first-order semantic fallback, and matched lifetime benchmarks (including persistence and recovery). More general higher-order derivatives, multiway joins, recursion, and automated cost-model / adaptive plan replacement remain independently gated **G5** work. Every optimized algorithm must have a semantic fallback and a matched benchmark, or a clear capability rejection when no resource-safe fallback exists.
 
 | Strategy | Admission condition | Material limit |
 | --- | --- | --- |
@@ -168,7 +172,9 @@ First-order delta execution is the mandatory baseline in G1–G3a. Eligible part
 | Localized recomputation | Explicit affected-key/partition bound and recoverable input | A fallback must not silently become a full unbounded database scan. |
 | Recursive differential maintenance | Qualified recursive fragment and deletion algorithm | Termination and state growth remain workload dependent. |
 
-Search a finite set of admitted candidates, beginning with first-order execution and the bounded qualified factorization family. Cap candidate count, planning time/memory and proposed auxiliary state; record when search stops. Keep the best admissible candidate found, or reject when no qualified plan fits the resource contract. An incomplete search cannot claim global optimality, and a first-order fallback still needs its own admission checks. Higher-order or multiway candidates enter this set only after their separate capability gates; no universal auxiliary-view search is required for G3.
+A fixed, explicitly selected qualified factorization rule can ship before independent shared consumers, online isolation or a broad state-placement planner. It still records its eligibility facts, state bounds, recovery contract and first-order fallback/rejection in the ordinary plan and `EXPLAIN INCREMENTAL`. No generic optimizer framework is a prerequisite.
+
+When multiple strategies are admitted, search a finite set of candidates, beginning with first-order execution and the bounded qualified factorization family. Cap candidate count, planning time/memory and proposed auxiliary state; record when search stops. Keep the best admissible candidate found, or reject when no qualified plan fits the resource contract. An incomplete search cannot claim global optimality, and a first-order fallback still needs its own admission checks. Higher-order or multiway candidates enter this set only after their separate capability gates; no universal auxiliary-view search is required for G3.
 
 F-IVM research motivates maintaining hierarchies of auxiliary views and factorized payloads. Rockstream's choice of which patterns to implement is a product decision, not a claim to reproduce every research result. [S7]
 
@@ -176,15 +182,17 @@ For orders joined to customers and summed by region, maintain order sum and rele
 
 A reusable logical arrangement identity contains the normalized expression, input identities and lineage, time domain, schema, semantic version, equality/key expressions, collation, and security-sharing scope. Physical variants add partitioning, encoding, compression, and format version. A hash match is only an index into a catalog: full semantic descriptors must match before reuse, and a separate compatibility check verifies that the physical variant can satisfy the new consumer's retained-history and freshness requirements. Two views with different authorization policies cannot accidentally share a policy-dependent result. Shared physical input state is permitted only within an explicitly authorized isolation boundary.
 
-Sharing does not imply identical freshness or infinite retention. Each consumer records its next required cut, retention protection, publication group, and maintenance policy. Shared arrangement progress can advance while a slower consumer reads retained older versions; unrelated groups do not acquire a common commit barrier merely through sharing. Explicit dependencies and atomically grouped publication still require compatible cuts. The planner may fork a physical arrangement when one consumer's retention, load, or availability requirements impose excessive cost on others. Slow consumers use a bounded history budget and may need to resnapshot after expiry. Dropping a view releases its references through the catalog lifecycle; it never directly deletes a shared trace. Differential Dataflow's arrangement abstraction supports indexed sharing as a useful precedent; durable multi-tenant sharing adds Rockstream-specific contracts. [S8]
+**G3b-S baseline:** Share only among views explicitly placed in one atomic publication group with the same maintenance cadence and compatible retention contracts. Reuse still requires full semantic/security descriptors, lifecycle reference tracking, bounded state, exact restart and measured benefit against isolated state. All members accept the group's joint publication and quarantine boundary; the planner cannot merge independent groups merely to obtain reuse. A request for independent schedules or fault isolation uses separate arrangements until `G3b-I` qualifies.
+
+**G3b-I extension:** Sharing does not imply identical freshness or infinite retention. Each consumer records its next required cut, retention protection, publication group, and maintenance policy. Shared arrangement progress can advance while a slower consumer reads retained older versions; unrelated groups do not acquire a common commit barrier merely through sharing. Explicit dependencies and atomically grouped publication still require compatible cuts. The planner may fork a physical arrangement when one consumer's retention, load, or availability requirements impose excessive cost on others. Slow consumers use a bounded history budget and may need to resnapshot after expiry. Dropping a view releases its references through the catalog lifecycle; it never directly deletes a shared trace. Differential Dataflow's arrangement abstraction supports indexed sharing as a useful precedent; durable multi-tenant sharing adds Rockstream-specific contracts. [S8]
 
 ## 6. Resource-aware placement, diagnostics, and G5 cost-model optimization
 
-Start simple in **G3b** with **deterministic, measurable rule-based placement** rather than a speculative monetary cost predictor whose future workload parameters (update skew, failure frequency, sleep cycles) are unknown at `CREATE MATERIALIZED VIEW` time:
+Use **deterministic, measurable rules**, scoped to the capability being adopted. A speculative monetary cost predictor is not a prerequisite; future workload parameters (update skew, failure frequency, sleep cycles) are unknown at `CREATE MATERIALIZED VIEW` time:
 
-- **Default sharing within budgets:** Share an existing canonical arrangement when full semantic and security descriptors match and the new consumer's retention window and freshness schedule fit within the shared arrangement's configured retention/memory budget.
-- **Explicit and rule-based isolation:** Isolate a consumer (via pinned snapshot, replay, exact-cut verification, and atomic binding cutover) when explicitly requested or when its retention window or lag exceeds the shared arrangement's configured budget, reserving peak coexistence capacity before starting.
-- **Bounded eligible F-IVM (`P3.8`):** Apply a small catalog of algebraically verified join-aggregate factorization rules (checked against enforced uniqueness/nullability/numeric contracts) when the rule's preconditions hold and state bounds fit, retaining first-order IVM as the fallback.
+- **G3b-S sharing within one group/cadence:** Share an existing canonical arrangement when full semantic and security descriptors match and the new consumer is in the same publication group/cadence and its retention obligations fit within the shared arrangement's configured retention/memory budget. Independent publication or cadence requires `G3b-I`.
+- **G3b-I explicit and rule-based isolation:** Isolate a consumer (via pinned snapshot, replay, exact-cut verification, and atomic binding cutover) when explicitly requested or when its retention window or lag exceeds the shared arrangement's configured budget, reserving peak coexistence capacity before starting.
+- **G3b-F bounded eligible F-IVM (`P3.8`):** Apply a small catalog of algebraically verified join-aggregate factorization rules (checked against enforced uniqueness/nullability/numeric contracts) when the rule's preconditions hold and state bounds fit, retaining first-order IVM as the fallback.
 
 Collect versioned, bounded runtime telemetry: update/delete rates, cardinality, key skew, output amplification, reuse count, state/history bytes, cache hit rate, object requests, and compaction debt.
 
@@ -209,8 +217,9 @@ Timely's capability model is a useful foundation for proving when no further dat
 | Same-epoch join correctness | Both inputs change, including duplicate insert/delete cancellation and nonempty cross terms. |
 | Nonlinear operators | Zero-crossing transitions, first/last matches, empty global aggregates, top-K replacement after deletions. |
 | Logical MVCC | Exact answers at every advertised retained cut across different physical checkpoint intervals, compaction, crash, and slow-consumer catch-up; explicit failure at uncovered cuts. |
-| Shared scheduling | Fast and scheduled consumers retain compatible cuts without a forced global barrier; bounded history, expiry/resnapshot, and deliberate duplication under SLO pressure. |
-| Early factorization | Grouped-join updates and deletes, enforced uniqueness violations, NULL/decimal limits, historical cuts, restart, and complete lifetime cost against first-order execution. |
+| Same-group sharing (G3b-S) | Full descriptor and group/cadence checks; lifecycle, restart, bounded state and measured benefit; rejection of independent-cadence attachment. |
+| Shared scheduling (G3b-I) | Fast and scheduled consumers retain compatible cuts without a forced global barrier; bounded history, expiry/resnapshot, and deliberate duplication under SLO pressure. |
+| Early factorization (G3b-F) | Grouped-join updates and deletes, enforced uniqueness violations, NULL/decimal limits, historical cuts, restart, and complete lifetime cost against first-order execution. |
 | Time and recursion | No-data timer progress, replay after crash, late input policies, cyclic graphs, recursive deletions, limit exhaustion without partial publication. |
 | Plan replacement | Exact cut alignment under concurrent writes, restart at each phase, old/new schema and subscription compatibility, rollback constraints. |
 | Materialization advice | Stale recommendations revalidate before application; overlapping benefits are not double counted; peak transition and retained-history costs can reject an apparently cheaper steady-state plan; advisory inspection never starts a build or changes catalog/consumer policy. |

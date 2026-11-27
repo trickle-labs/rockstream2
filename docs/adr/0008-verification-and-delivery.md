@@ -4,7 +4,7 @@
 
 ## Decision
 
-Build Rockstream 2 incrementally along one executable vertical path (`W1-G`) through seven clean gates—**G0 → G1 → G2 → G3a → G3b → G4 → G6** (with **G5** advancing independently)—and keep the verification stack small, fast, and honest about what each layer actually proves:
+Build Rockstream 2 incrementally along one executable vertical path (`W1-G`) through **G0 → G1 → G2 → G3a**, then independently qualified IVM capabilities and named production profiles per [ADR 0013](0013-minimum-mechanisms-and-independent-qualification.md). **G6-S** qualifies single-node Object-Native production without G4; **G6-D** requires the selected G4 distributed mechanisms. G3b components and G5 advance as needed, with combined-path evidence for every selected combination. Build this path and keep the verification stack small, fast, and honest about what each layer actually proves:
 
 1. **Pure semantics (G0.1, G1+):** Unit tests, `proptest` generated transaction histories, and an **independent batch oracle** (PostgreSQL for the declared compatible subset plus a small independent Rust bag evaluator). Compare exact typed multisets at every published cut, including negative controls (broken cross-term, wrong `Q(empty)`).
 2. **Protocol safety (G0.3, extended at G4.0):** One concise **Quint** specification. G0.3 covers publication atomicity/expected-parent CAS, ownership-generation fencing and idempotent operation outcomes, and abstract GC pin/retire reachability, each with a negative control. G4.0 extends it with reader leases, VM pauses, clock discontinuities and sweeper-observed grace-window GC safety. Do not maintain duplicate formal models across multiple tools.

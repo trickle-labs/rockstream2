@@ -1,19 +1,20 @@
 # Implementation start: product experience and lean G0 execution
 
-**Status:** Proposed, 2026-11-26. Practical pre-implementation execution brief. The [implementation plan](implementation-plan.md) is the gate/dependency authority; [DESIGN.md](../../DESIGN.md) and [requirements](requirements.md) govern contracts.
+**Status:** Proposed, updated 2026-11-27. Practical pre-implementation execution brief. The [implementation plan](implementation-plan.md) is the gate/dependency authority; [DESIGN.md](../../DESIGN.md) and [requirements](requirements.md) govern contracts.
 
 ## 1. The smallest exceptional Rockstream
 
-Focus on a narrow, rock-solid SQL-first streaming database that maintains exact durable results, operates from one binary with zero external coordination dependencies, and delivers fast warm reads. The [implementation plan](implementation-plan.md) is the single roadmap authority; this is a summary. Build **step by step**:
-- **G0 foundation:** `G0.1` workspace/CI/oracle and `G0.4` native kernel spike unlock G1.
+Build toward the ultimate cloud-native IVM through a narrow, production-worthy first product: exact durable SQL results, one binary with zero external coordination dependencies, economical object-backed state and fast qualified warm reads. Shared and factorized maintenance, independent serving and distributed scale remain goals; their adoption follows real workload requirements and evidence ([ADR 0013](../adr/0013-minimum-mechanisms-and-independent-qualification.md)). The [implementation plan](implementation-plan.md) is the single roadmap authority; this is a summary. Build **step by step**:
+- **G0 foundation:** `G0.1` workspace/CI/oracle and a new independently reviewed `G0.4` native semantic/progress/ownership feasibility verdict unlock G1; historical inconclusive evidence remains unchanged.
 - **G0 durability physics:** `G0.2` storage probe and `G0.3` Quint model run in parallel with G1 and unlock G2. The timebox bounds scope, not delivery date.
 - **G1:** Pure in-memory semantic kernel with independent PostgreSQL/batch oracle verification.
 - **G2 (developer preview):** Single-node durable MVP—one binary, 5-minute local quickstart, standard `pgwire` clients, single-node object-store durability, crash recovery, view-level fault quarantine, and warm in-process reads.
-- **G3a (first public single-node preview):** Table-stakes SQL, live PostgreSQL CDC/Kafka, and subscriptions.
-- **G3b (shared-engine preview):** Shared arrangements, independent consumer schedules with arbitrary-cut logical MVCC, rule-based isolation, and eligible F-IVM.
-- **G4 (distributed preview):** Multi-node cloud, cache-affinity serving, reader leases and grace-window GC, optional Embedded OpenRaft. `G5` advanced features graduate independently; **G6** is the production release.
+- **G3a (first public single-node preview):** Table-stakes SQL, direct writes, live PostgreSQL CDC and subscriptions. Kafka source/outbox qualify independently when a selected workload requires them.
+- **G3b (independent capabilities):** Same-group/cadence sharing (**G3b-S**), eligible factorization (**G3b-F**), independent consumer schedules with arbitrary-cut history and isolation (**G3b-I**), and measured depth-one pipelining (**G3b-P**). No requirement to complete the whole family before production.
+- **G6-S (single-node production qualification):** G3a plus only selected capabilities, with real-provider durability, security, backup/restore, upgrades/rollback, physical resource qualification, eligible suspension/wake, 72-hour soak and the two-partner business gate.
+- **G4 (distributed preview) → G6-D (distributed production qualification):** Multi-node cloud, cache-affinity serving, reader leases and grace-window GC, optional Embedded OpenRaft, then the same production assurance for that profile. `G5` advanced features graduate independently.
 
-Engage design partners continuously from G0 onward to prioritize real query shapes and profiles without blocking G0/G1 execution.
+Engage design partners continuously from G0 onward to prioritize real query shapes and profiles without blocking G0/G1 execution. Select capabilities before qualification runs; the smaller single-node product keeps the same invariants and the ≥30% total-cost improvement target on two real partner workloads. It declares owner-loss downtime and cannot borrow an unqualified distributed availability or cached-read claim.
 
 ### Target user journey (G2 MVP)
 
@@ -58,14 +59,14 @@ Epochs 1 and 2 change both join inputs in one transaction, exercising join cross
 
 | Gate | `W1-G` progression |
 | --- | --- |
-| G0 foundation | Frozen inputs/expected cuts, independent PostgreSQL/batch oracle, minimal native kernel |
+| G0 foundation | Frozen inputs/expected cuts, independent PostgreSQL/batch oracle, native semantics/progress/ownership feasibility and logical bounds |
 | G0 durability physics | Conditional-write and storage-layout probe, concise protocol model |
 | G1 | Exact incremental operators (`COUNT`/`SUM`/`AVG`, inner joins), SQL binding, retractions, checked widened decimal/NULL laws, property tests |
-| G2 | End-to-end `pgwire`, durable local + single-node object store, bounded delta overlay, warm in-process reads, view quarantine, crash recovery, 5-minute quickstart |
-| G3a | Table-stakes SQL (`LEFT OUTER JOIN`, `DISTINCT`, semi/anti joins, delete-safe `MIN`/`MAX`), online lifecycle, live PG CDC (additive-DDL tolerant), Kafka, subscriptions |
-| G3b | Shared arrangements across overlapping views, independent consumer schedules, rule-based isolation, bounded single-depth pipelining, eligible F-IVM |
+| G2 | End-to-end `pgwire`, durable local + single-node object store, selected storage layout, latest/RYW/pinned reads, view quarantine, crash recovery, physical runtime resource qualification and 5-minute quickstart; cached bounded-staleness mode only when independently qualified |
+| G3a | Table-stakes SQL (`LEFT OUTER JOIN`, `DISTINCT`, semi/anti joins, delete-safe `MIN`/`MAX`), online lifecycle, live PG CDC (additive-DDL tolerant) and subscriptions; Kafka source/outbox selected independently |
+| G3b-S / F / I / P | Independently qualified same-group sharing / eligible factorization / independent schedules, history and isolation / measured depth-one pipelining |
 | G4 | Multi-node execution, fenced failover, reader leases and grace-window GC, cache-affinity serving pools, optional Embedded OpenRaft profile |
-| G6 | 72-hour soak, DR restore drills, rolling upgrades, audited SLO/cost evidence, v1 migration |
+| G6-S / G6-D | Same production assurance for the selected single-node/distributed profile: 72-hour soak, backup/DR, upgrade/rollback, security/resource/activation drills, audited SLO/cost and workload-specific migration |
 
 ## 3. Lean G0: four kill-switch deliverables
 
@@ -74,11 +75,11 @@ Do **not** build two full engines, 1,000-view benchmarks, full hibernation, or a
 | Deliverable | Scope & concrete output | Exit / fallback trigger |
 | --- | --- | --- |
 | **G0.1** Bootstrap, CI & `W1-G` Oracle | Minimal Rust workspace (`Cargo.toml`, pinned toolchain), one-command local/CI fast check (<5 min), crate dependency-direction negative control, frozen `W1-G` fixture + independent PostgreSQL/batch oracle, deliberately broken cross-term negative control, and Rockstream v1 donor disposition register | Clean CI pass + proven negative controls; ready for G1 |
-| **G0.2** Storage & Metadata Physics Probe | On one real provider (record storage tier): conditional-write conformance/latency and in-process group commit; **immutable-delta + per-group SlateDB index + bounded overlay** vs. pure SlateDB history on `W1-G` (amplification, post-CAS/mid-apply `SIGKILL` writable reopen with zero double-apply, metadata checkpoint registration and overlay-cap backpressure, cold recovery, one in-process historical point lookup); sequential freshness round trips | Apply the [predeclared G0.2 rubric](qualification.md#g0-feasibility-decisions): reject providers failing conditional-write/read-after-write conformance; disqualify layouts failing zero-double-apply reopen or hard overlay caps; lock **one** storage layout and record measurements before G2 (single-zone tiers are separately named durability profiles, never the default) |
+| **G0.2** Storage & Metadata Physics Probe | On one real provider (record storage tier): conditional-write conformance/latency and in-process group commit; **immutable-delta + per-group SlateDB index + bounded overlay** vs. pure SlateDB history on `W1-G` (amplification, post-CAS/mid-apply `SIGKILL` writable reopen with zero double-apply, metadata checkpoint registration and overlay-cap backpressure, cold recovery, one in-process historical point lookup); sequential freshness round trips | Apply the [predeclared G0.2 rubric](qualification.md#g0-feasibility-decisions): reject providers failing conditional-write/read-after-write conformance; disqualify layouts failing exact-parent/zero-double-apply recovery or hard trailing-state bounds; among safe candidates meeting frozen SLO/resource/cost limits, lock the simplest **one** layout considering lifetime recovery/operation/verification cost, without favoring hybrid or requiring a simpler candidate to win every metric; record comparable measurements before G2 (single-zone tiers are separately named durability profiles, never the default) |
 | **G0.3** Core Protocol Model (Quint) | One concise model of (1) publication atomicity with expected-parent CAS and receipt coverage, (2) ownership-generation fencing and idempotent outcomes, including lost CAS response after root advance, and (3) GC pin/retire no-resurrection with abstract minimum object age; one negative control per property | Zero invariant violations within bounds; all negative controls caught |
-| **G0.4** Native Kernel Spike | Acyclic scalar-epoch weighted Arrow batch kernel executing `W1-G` against the G0.1 independent oracle with explicit memory/queue bounds | Confirm native kernel ergonomics and complexity; a passing spike seeds P1.3, otherwise delete it; **only** prototype Timely/Differential once if native hits the [predeclared G0.4 wall](qualification.md#g0-feasibility-decisions) (unresolved `W1-G` oracle/bound failure or inability to express acyclic scalar-epoch progress/state ownership cleanly within the ~2-week timebox) |
+| **G0.4** Native Kernel Feasibility | Acyclic scalar-epoch weighted Arrow batch kernel executing `W1-G` against the G0.1 independent oracle; logical row/byte/queue/work bounds, retained-output ownership and exhaustion behavior | Independently review native semantics/progress/state ownership under the [revised G0.4 criteria](qualification.md#g0-feasibility-decisions). Only a demonstrated native semantic/ownership/logical-bound wall triggers one Timely/Differential comparison. Record physical allocation/dependency/headroom gaps separately for P2.5 before any G2 runtime profile; missing evidence stays inconclusive and a dependency OOM alone is not a scheduler-selection result |
 
-Reader-lease, grace-window GC under live readers, separate-process reader, cross-AZ WAL and OpenRaft probes move to the `G4.0` entry probe. Direct-DML primary-key-index recovery is accepted in P2.1.
+Do not extend the throwaway native spike into a production allocator or runtime framework. Preserve the existing inconclusive report and counterexamples; a new reviewed feasibility pass unlocks pure G1 work, while unresolved physical-resource behavior blocks publication of the affected G2 runtime profile. Reader-lease, grace-window GC under live readers, separate-process reader, cross-AZ WAL and OpenRaft probes move to the `G4.0` entry probe. Direct-DML primary-key-index recovery is accepted in P2.1.
 
 ## 4. Start with three parallel lanes (WIP ≤ 3)
 
@@ -90,4 +91,4 @@ Start immediately after design approval with three clean, non-overlapping lanes 
 | **Lane B** | **G0.2** — Conditional-write and storage-layout probe | G2 together with G0.3 |
 | **Lane C** | **G0.3** — Concise Quint model | G2 together with G0.2 |
 
-G1 starts when the foundation lane passes. G2 starts when the durability-physics lane passes and ADRs 0003–0005 / 0011 record the measured storage/metadata/runtime choices. Keep design-partner engagement parallel; do not make G1 wait for storage physics or launch another speculative design phase.
+G1 starts when the foundation lane passes under the revised, independently reviewed criteria. G2 starts when the durability-physics lane passes and ADRs 0003–0005 / 0011 / 0013 record the measured storage/metadata/runtime choices; P2.5 must close the selected profile’s physical resource gaps before a G2 preview is published. Keep design-partner engagement parallel; do not make G1 wait for storage physics or launch another speculative design phase.
