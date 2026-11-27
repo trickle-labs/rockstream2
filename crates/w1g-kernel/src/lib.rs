@@ -1096,12 +1096,49 @@ mod tests {
             .unwrap();
 
         let changes: Vec<_> = (0..MAX_ROWS)
-            .map(|i| (1, "N", if i % 2 == 0 { -1 } else { 1 }))
+            .map(|i| {
+                (
+                    1,
+                    if i + 1 == MAX_ROWS { "S" } else { "N" },
+                    if i % 2 == 0 { -1 } else { 1 },
+                )
+            })
             .collect();
         let delta = kernel.apply(1, &customers(&changes), &orders(&[])).unwrap();
-        assert_eq!(delta.num_rows(), 0);
+        let regions = delta
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        let counts = delta
+            .column(1)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap();
+        let sums = delta
+            .column(2)
+            .as_any()
+            .downcast_ref::<Decimal128Array>()
+            .unwrap();
+        let weights = delta
+            .column(3)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap();
+        let actual: BTreeMap<_, _> = (0..delta.num_rows())
+            .map(|i| {
+                (
+                    regions.value(i),
+                    (counts.value(i), sums.value(i), weights.value(i)),
+                )
+            })
+            .collect();
+        assert_eq!(
+            actual,
+            BTreeMap::from([("N", (127, 12_700, -1)), ("S", (127, 12_700, 1))])
+        );
 
-        let oracle_customers = BTreeMap::from([(1, "N".to_owned())]);
+        let oracle_customers = BTreeMap::from([(1, "S".to_owned())]);
         let oracle_orders = (0..127).map(|id| (id, (1, 100))).collect();
         let expected = w1g_oracle::evaluate(&oracle_customers, &oracle_orders)
             .into_iter()

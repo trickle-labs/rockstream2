@@ -76,9 +76,10 @@ loops each visit at most 128 groups and probe at most 128 slots per group.
 Other map probes and temporary arrays are also fixed at 128 slots. These are
 conservative work bounds, not elapsed-time or physical-allocation guarantees.
 The focused `bounded_fanout_repeated_retractions_match_batch_oracle` test uses
-one customer, 127 matching orders and 128 alternating customer changes; it
-checks the zero delta, complete state and ungrouped count against an independent
-batch result. Exhausted logical state, scratch and output admission return an
+one customer, 127 matching orders and 128 alternating customer changes ending
+in a region change; it checks the old-group retraction, new-group insertion,
+complete state and ungrouped count against an independent batch result.
+Exhausted logical state, scratch and output admission return an
 error without committing the tentative epoch; retained output buffers remain
 charged until their final reference is dropped, as tested below.
 
