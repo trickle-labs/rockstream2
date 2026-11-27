@@ -10,7 +10,7 @@ arrow-buffer = "=59.3.2"
 arrow-schema = "=59.3.2"
 
 [lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
 
 [lints.clippy]
 all = "deny"

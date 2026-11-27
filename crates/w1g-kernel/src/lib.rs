@@ -5,7 +5,10 @@ use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use std::borrow::Borrow;
 #[cfg(test)]
 use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::{
+    Arc, OnceLock,
+    atomic::{AtomicUsize, Ordering},
+};
 
 const MAX_ROWS: usize = 128;
 const MAX_REGION_BYTES: usize = 32;
@@ -150,12 +153,69 @@ struct Order {
 }
 
 #[derive(Debug, Default)]
+pub struct OutputBudget(AtomicUsize);
+
+impl OutputBudget {
+    fn reserve(self: &Arc<Self>) -> Result<Ticket, &'static str> {
+        self.0
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                (current < MAX_IN_FLIGHT_OUTPUTS).then_some(current + 1)
+            })
+            .map_err(|_| "output backlog limit")?;
+        Ok(Ticket(self.clone()))
+    }
+}
+
+#[derive(Debug)]
+struct Ticket(Arc<OutputBudget>);
+impl Drop for Ticket {
+    fn drop(&mut self) {
+        let previous = self.0.0.fetch_sub(1, Ordering::AcqRel);
+        assert!(previous > 0, "output reservation underflow");
+    }
+}
+
+#[derive(Debug)]
+struct OutputOwner {
+    regions: Vec<u8>,
+    offsets: Vec<i32>,
+    counts: Vec<i64>,
+    sums: Vec<i128>,
+    weights: Vec<i64>,
+    _ticket: Ticket,
+}
+
+impl OutputOwner {
+    #[allow(unsafe_code)]
+    fn buffers(self: Arc<Self>) -> [Buffer; 5] {
+        macro_rules! buffer {
+            ($field:ident) => {{
+                let slice = &self.$field;
+                let ptr = std::ptr::NonNull::new(slice.as_ptr() as *mut u8)
+                    .expect("Vec pointers are non-null");
+                let len = std::mem::size_of_val(slice.as_slice());
+                // SAFETY: the immutable Vec remains owned by the Arc retained by
+                // the Buffer. Its pointer is aligned and valid for initialized bytes.
+                unsafe { Buffer::from_custom_allocation(ptr, len, self.clone()) }
+            }};
+        }
+        [
+            buffer!(regions),
+            buffer!(offsets),
+            buffer!(counts),
+            buffer!(sums),
+            buffer!(weights),
+        ]
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct Kernel {
     epoch: u64,
     customers: FixedMap<i64, Region>,
     orders: FixedMap<i64, Order>,
     groups: FixedMap<Region, (i64, i128)>,
-    outputs: [Option<[Option<Buffer>; 5]>; MAX_IN_FLIGHT_OUTPUTS],
+    budget: Arc<OutputBudget>,
 }
 
 fn integers(batch: &RecordBatch, column: usize) -> Result<&Int64Array, &'static str> {
@@ -173,26 +233,18 @@ impl Kernel {
             customers: self.customers.clone(),
             orders: self.orders.clone(),
             groups: self.groups.clone(),
-            outputs: Default::default(),
+            budget: self.budget.clone(),
         }
     }
 
-    fn admit_output(&mut self) -> Result<usize, &'static str> {
-        let slot = self
-            .outputs
-            .iter()
-            .position(|entry| {
-                entry.as_ref().is_none_or(|buffers| {
-                    buffers
-                        .iter()
-                        .flatten()
-                        .all(|buffer| buffer.strong_count() == 1)
-                })
-            })
-            .ok_or("output backlog limit")?;
-        // Release the old backing allocations before reserving replacement output.
-        self.outputs[slot] = None;
-        Ok(slot)
+    pub fn with_budget(budget: Arc<OutputBudget>) -> Self {
+        Self {
+            epoch: 0,
+            customers: Default::default(),
+            orders: Default::default(),
+            groups: Default::default(),
+            budget,
+        }
     }
 
     /// Ungrouped COUNT returns exactly one Arrow row even for empty input.
@@ -200,7 +252,7 @@ impl Kernel {
         let count = self.groups.values().try_fold(0_i64, |n, (count, _)| {
             n.checked_add(*count).ok_or("count overflow")
         })?;
-        let slot = self.admit_output()?;
+        let ticket = self.budget.reserve()?;
         let mut values = Vec::new();
         reserve(&mut values, 1)?;
         if values
@@ -212,10 +264,16 @@ impl Kernel {
             return Err("scratch limit");
         }
         values.push(count);
-        let buffer = Buffer::from_vec(values);
-        let output = Int64Array::new(buffer.clone().into(), None);
-        self.outputs[slot] = Some([Some(buffer), None, None, None, None]);
-        Ok(output)
+        let owner = Arc::new(OutputOwner {
+            regions: vec![],
+            offsets: vec![],
+            counts: values,
+            sums: vec![],
+            weights: vec![],
+            _ticket: ticket,
+        });
+        let buffers = owner.buffers();
+        Ok(Int64Array::new(buffers[2].clone().into(), None))
     }
 
     pub fn result(&self) -> impl Iterator<Item = (&str, (i64, i128))> {
@@ -307,7 +365,7 @@ impl Kernel {
             return Err("expected UTF8");
         }
         // A retained buffer remains charged through all Arrow array and slice clones.
-        let output_slot = self.admit_output()?;
+        let ticket = self.budget.reserve()?;
         // shortcut: Arrow wrapper allocations remain unaccounted, reserve them before promotion.
         let possible_groups = self
             .customers
@@ -467,12 +525,15 @@ impl Kernel {
                 weights.push(1);
             }
         }
-        let regions = Buffer::from_vec(regions);
-        let offsets = Buffer::from_vec(offsets);
-        let counts = Buffer::from_vec(counts);
-        let sums = Buffer::from_vec(sums);
-        let weights = Buffer::from_vec(weights);
-        let buffers = [regions, offsets, counts, sums, weights];
+        let owner = Arc::new(OutputOwner {
+            regions,
+            offsets,
+            counts,
+            sums,
+            weights,
+            _ticket: ticket,
+        });
+        let buffers = owner.buffers();
         let regions = StringArray::try_new(
             OffsetBuffer::new(buffers[1].clone().into()),
             buffers[0].clone(),
@@ -492,8 +553,6 @@ impl Kernel {
             ],
         )
         .map_err(|_| "invalid output batch")?;
-        next.outputs = std::mem::take(&mut self.outputs);
-        next.outputs[output_slot] = Some(buffers.map(Some));
         *self = next;
         Ok(output)
     }
@@ -835,6 +894,101 @@ mod tests {
             kernel.apply(1, &empty_customers, &empty_orders),
             Err("output backlog limit")
         );
+    }
+
+    #[test]
+    fn shared_budget_outlives_destroyed_kernel_and_slices() {
+        let budget = Arc::new(OutputBudget::default());
+        let empty_customers = customers(&[]);
+        let empty_orders = orders(&[]);
+        let retained = {
+            let mut first = Kernel::with_budget(budget.clone());
+            let output = first
+                .apply(0, &customers(&[(1, "N", 1)]), &orders(&[(2, 1, 100, 1)]))
+                .unwrap();
+            output.column(1).to_data().buffers()[0].slice_with_length(0, 0)
+        };
+        let mut second = Kernel::with_budget(budget);
+        let other = second.apply(0, &empty_customers, &empty_orders).unwrap();
+        let before = second.fork_state();
+        assert_eq!(
+            second.apply(1, &empty_customers, &empty_orders),
+            Err("output backlog limit")
+        );
+        assert_eq!(second, before);
+        drop(retained);
+        let retry = second.apply(1, &empty_customers, &empty_orders).unwrap();
+        drop((other, retry));
+    }
+
+    #[test]
+    fn failed_scratch_admission_releases_shared_ticket() {
+        let budget = Arc::new(OutputBudget::default());
+        let mut kernel = Kernel::with_budget(budget.clone());
+        let before = kernel.fork_state();
+        assert_eq!(
+            kernel.apply_with_scratch_limit(0, &customers(&[(1, "N", 1)]), &orders(&[]), 0),
+            Err("scratch limit")
+        );
+        assert_eq!(kernel, before);
+        assert_eq!(budget.0.load(Ordering::Acquire), 0);
+        assert!(kernel.apply(0, &customers(&[]), &orders(&[])).is_ok());
+    }
+
+    #[test]
+    fn late_order_error_releases_shared_ticket_and_state() {
+        let budget = Arc::new(OutputBudget::default());
+        let mut kernel = Kernel::with_budget(budget.clone());
+        let before = kernel.fork_state();
+        assert_eq!(
+            kernel.apply(0, &customers(&[(1, "N", 1)]), &orders(&[(2, 1, 100, -1)])),
+            Err("invalid order delta")
+        );
+        assert_eq!(kernel, before);
+        assert_eq!(budget.0.load(Ordering::Acquire), 0);
+        assert!(kernel.apply(0, &customers(&[]), &orders(&[])).is_ok());
+    }
+
+    #[test]
+    fn competing_reservations_are_bounded() {
+        let budget = Arc::new(OutputBudget::default());
+        let barrier = Arc::new(std::sync::Barrier::new(9));
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let budget = budget.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    let reservation = budget.reserve();
+                    barrier.wait();
+                    reservation.is_ok()
+                })
+            })
+            .collect();
+        barrier.wait();
+        barrier.wait();
+        let admitted = handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .filter(|ok| *ok)
+            .count();
+        assert_eq!(admitted, MAX_IN_FLIGHT_OUTPUTS);
+        assert_eq!(budget.0.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn count_slice_outlives_producer_and_retains_budget() {
+        let budget = Arc::new(OutputBudget::default());
+        let retained = {
+            let mut producer = Kernel::with_budget(budget.clone());
+            producer.ungrouped_count().unwrap().slice(0, 0)
+        };
+        let mut other = Kernel::with_budget(budget.clone());
+        let second = other.ungrouped_count().unwrap();
+        assert_eq!(budget.reserve().unwrap_err(), "output backlog limit");
+        drop(retained);
+        assert!(budget.reserve().is_ok());
+        drop(second);
     }
 
     #[test]

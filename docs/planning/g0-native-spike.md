@@ -43,27 +43,30 @@ required for a feasibility decision. The prior small-fixture RSS observations do
 not qualify resource admission. Do not infer the predeclared fallback trigger solely from missing
 measurements.
 
-### Output lifetime admission
+### Output lifetime admission experiment
 
-Each kernel admits at most two outstanding outputs, including ungrouped-count
-arrays. It retains sentinel references to each output buffer and releases a slot
-only when every sentinel is its buffer's sole owner. Arrow array clones,
-extracted buffers, zero-length slices and deliberately forgotten outputs stay
-charged; when both slots are held, the next call returns `output backlog limit`
-without advancing the epoch. Reclaimed sentinels are dropped before allocating a
-replacement. Tests exercise rejection, state preservation and retry after the
-last slice is dropped. The fixed schema is shared across output batches instead
-of creating a fresh schema per epoch.
+A shared output budget admits at most two outstanding outputs across kernels
+that explicitly receive that same budget. Each output is charged one slot
+before allocation, and its immutable vector owner holds the budget ticket.
+The owner is attached to all five Arrow buffers through Arrow's unsafe custom
+allocation API. Arrow slices, clones and extracted buffers therefore keep the
+owner and ticket alive even after the producing kernel is dropped. COUNT output
+uses the same mechanism. A full budget rejects the whole interval without
+advancing its state; failed intervals release their tickets. The tests cover
+nested and empty slices, a destroyed producer, competing admissions, retry,
+forgotten outputs and late validation failure. The output schema is shared.
 
-The five tracked vector capacities of a single weighted delta are capped at
-17,412 bytes, so two retained delta outputs account for at most 34,824 bytes
-of vector capacities per live kernel. This is a per-kernel admission limit,
-not a process-wide pool: dropping a kernel while its caller retains output,
-creating additional kernels, consumer copies, shared input, allocator metadata
-and Arrow wrapper objects are outside it. The allocator may return a larger
-capacity than requested; it is checked after allocation and rejected if above
-the cap. This experiment does not reserve physical memory or qualify process
-headroom.
+The sum of each output's five vector capacities is checked against 17,412 bytes
+before transfer to Arrow, so two admitted outputs account for at most 34,824
+bytes of accepted vector capacities per shared budget. Arrow custom buffers
+report their initialized length instead of their owner's capacity; the explicit
+pre-transfer capacity check is essential. `try_reserve_exact` may transiently
+allocate more than requested before the post-allocation capacity check rejects
+it. This is a logical admission budget, not a physical-memory reservation or a
+process-wide pool: independently created budgets, consumer copies, shared input,
+allocator metadata, wrapper objects, physical allocation failure and process
+headroom remain outside it. Caller-provided custom Arrow buffers can also report
+less than their true backing capacity and require separate input attribution.
 
 ### Allocation-failure gap
 
@@ -80,7 +83,7 @@ not an allocation bound: it excludes alignment, capacity rounding, Arrow and
 schema objects, temporary buffers and allocator metadata. The reservation
 regression forces a capacity-overflow error; it does
 not simulate a physical OOM. The output values and offsets are reserved fallibly before the state clone and
-passed to Arrow without copying via `Buffer::from_vec` and `StringArray::try_new`.
+passed to Arrow without copying via the custom allocation API and `StringArray::try_new`.
 However, pinned `arrow-buffer` 59.3.2 wraps each `Buffer`'s backing bytes in
 `Arc::new`, which itself is infallible; array, schema and `RecordBatch`
 construction also allocate. An allocator failure in those paths need not return
