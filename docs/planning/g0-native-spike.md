@@ -65,6 +65,10 @@ limits independently bound the logical input value and UTF-8 offset payload to
 32 UTF-8 bytes and one 4-byte offset, plus one final offset. An order row has
 four 8-byte integers and is smaller. This excludes Arrow metadata, unused or
 shared backing capacity and caller memory, all still open for G2 qualification.
+The row limit and concrete primitive-array type checks run before reported-size
+traversal, so an unexpected nested Arrow type is rejected without walking its
+children. The boundary assumes Arrow's standard primitive implementations from
+a trusted producer; it does not sandbox arbitrary custom Rust `Array` code.
 
 One `&mut Kernel` processes one scalar epoch synchronously, with no internal
 input queue. An interval has at most 128 input iterations and 128 retained

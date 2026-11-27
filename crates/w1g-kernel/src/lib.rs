@@ -343,26 +343,13 @@ impl Kernel {
         if customers.num_columns() != 3 || orders.num_columns() != 4 {
             return Err("invalid schema");
         }
-        let size = customers
-            .get_array_memory_size()
-            .checked_add(orders.get_array_memory_size())
-            .ok_or("input size overflow")?;
-        if size > MAX_INPUT_BYTES
-            || customers
-                .num_rows()
-                .checked_add(orders.num_rows())
-                .ok_or("input size overflow")?
-                > MAX_ROWS
+        if customers
+            .num_rows()
+            .checked_add(orders.num_rows())
+            .ok_or("input size overflow")?
+            > MAX_ROWS
         {
             return Err("input limit");
-        }
-        if customers
-            .columns()
-            .iter()
-            .chain(orders.columns())
-            .any(|a| a.null_count() != 0)
-        {
-            return Err("null input");
         }
         let ids = integers(customers, 0)?;
         let input_regions = customers
@@ -377,6 +364,26 @@ impl Kernel {
         let order_weights = integers(orders, 3)?;
         if customers.schema().field(1).data_type() != &DataType::Utf8 {
             return Err("expected UTF8");
+        }
+        let arrays: [&dyn Array; 7] = [
+            ids,
+            input_regions,
+            input_weights,
+            order_ids,
+            order_customers,
+            cents,
+            order_weights,
+        ];
+        let size = arrays.iter().try_fold(0_usize, |total, array| {
+            total
+                .checked_add(array.get_array_memory_size())
+                .ok_or("input size overflow")
+        })?;
+        if size > MAX_INPUT_BYTES {
+            return Err("input limit");
+        }
+        if arrays.iter().any(|a| a.null_count() != 0) {
+            return Err("null input");
         }
         // A retained buffer remains charged through all Arrow array and slice clones.
         let ticket = self.budget.reserve()?;
@@ -819,6 +826,32 @@ mod tests {
             Err("invalid order delta")
         );
         assert_eq!(kernel, before);
+    }
+
+    #[test]
+    fn wrong_nested_type_is_rejected_before_recursive_memory_accounting() {
+        let mut kernel = kernel();
+        let before = kernel.fork_state();
+        let field = Arc::new(Field::new("child", DataType::Int64, false));
+        let leaf: arrow_array::ArrayRef = Arc::new(Int64Array::from(Vec::<i64>::new()));
+        let children: Vec<_> = (0..512).map(|_| (field.clone(), leaf.clone())).collect();
+        let nested = arrow_array::StructArray::from(children);
+        let invalid = RecordBatch::try_from_iter(vec![
+            ("id", Arc::new(nested) as _),
+            (
+                "region",
+                Arc::new(StringArray::from(Vec::<&str>::new())) as _,
+            ),
+            ("weight", Arc::new(Int64Array::from(Vec::<i64>::new())) as _),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            kernel.apply(0, &invalid, &orders(&[])),
+            Err("expected non-null BIGINT")
+        );
+        assert_eq!(kernel, before);
+        assert!(kernel.apply(0, &customers(&[]), &orders(&[])).is_ok());
     }
 
     #[test]
