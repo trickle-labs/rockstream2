@@ -1,5 +1,33 @@
 # G0.3 bounded model runs
 
+## Idempotency controls
+
+On 2026-11-27, bounded experiments against the prior invariant exposed three
+gaps: an instrumented operation 2 could apply twice, operation 1 could finish
+without a recorded outcome, and operation 1's recorded result could change from
+revision 1 to a later revision 2 and be returned, all while the old invariant
+held. Each operation now has its own effect, outcome and reply tracking. A ghost
+of its original commit revision checks that a recorded outcome is present and
+unchanged. Separate mutants cover retries, missing outcomes, nonzero corruption
+after a root advance, and incorrect reconciliation. This remains a bounded
+abstraction, not qualification of G0.3 or an implementation.
+
+The model with SHA-256
+`fb070bea70d95d720b53bc82399afa16e11a0ec51407ad0111b0627a2b48ac3e`
+and check script with SHA-256
+`ae5159e452707269badfd1432292bcfd555e4c43082c9e557416c761c2b8edc8`
+passed eleven-step symbolic invariant checking, 31 witnesses and 33 negative
+controls. The [raw run](idempotency-raw-run.tar.gz), SHA-256
+`3e298bd9d18407af541523c80ff80f59491971f4a27808bc8142f30b994bf380`,
+includes the before-fix mutant models, logs and traces, source hashes,
+environment, per-invocation output, statuses and traces, a PostgreSQL-backed
+fast gate and the separate depth-3 TLC run. All 66 statuses, 33 counterexamples
+and 64 parseable traces were checked. TLC found 11,782 distinct depth-tagged
+configurations (40,383 generated, zero queued); this count is not for the
+eleven-step symbolic check. No projected count for the revised model was
+computed. Quint 0.34.0, Apalache 0.62.4, Node 26.13.1 and OpenJDK 21.0.13.1 ran
+on Darwin arm64. The fast gate preceded integration with later main revisions.
+
 ## Retirement-before-collection control
 
 On 2026-11-27, a guard-bypass experiment against the prior invariant reached
