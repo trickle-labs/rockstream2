@@ -1,6 +1,6 @@
 # ADR 0005: lean native Arrow/DataFusion runtime with evidence-triggered fallback
 
-**Status:** Proposed working choice; validated in G0.4. **Date:** 2026-11-26. **Owners:** runtime, compiler, and storage leads.
+**Status:** Proposed working choice; scoped feasibility decided in G0.4, with runtime resource qualification before G2 preview qualification under [ADR 0013](0013-minimum-mechanisms-and-independent-qualification.md). **Date:** 2026-11-26. **Owners:** runtime, compiler, and storage leads.
 
 ## Decision
 
@@ -8,8 +8,8 @@ Build a **lean Rockstream-native Rust runtime** over weighted Apache Arrow batch
 
 ### Staged execution complexity (build step by step)
 
-1. **G0.4–G3a (Acyclic, scalar-epoch, single-interval kernel):** Constrain the initial runtime to acyclic computation graphs, scalar domain epochs, weighted Arrow batches, Rockstream-owned checked widened numeric accumulators, deterministic error semantics, explicit prepare/publish boundaries, and **one active maintenance interval per publication group** (with operator/partition parallelism inside the interval and concurrency across independent groups).
-2. **G3b–G4 (Evidence-triggered bounded single-depth pipelining):** Once single-interval correctness and recovery are proven, activate bounded single-depth pipelining (`P3.9`) only if measured single-interval freshness is I/O-bound—overlapping compute for interval `k+1` against durable S3 staging/publication of interval `k` (bounded to depth 1, naming `k` as `expected_parent`, counting `k+1` in peak memory reservations, discarding `k+1` immediately if `k` aborts or quarantines, and draining to depth 0 before isolation cutover or reassignment).
+1. **Default until G3b-P is selected (acyclic, scalar-epoch, single-interval kernel):** Constrain the initial runtime to acyclic computation graphs, scalar domain epochs, weighted Arrow batches, Rockstream-owned checked widened numeric accumulators, deterministic error semantics, explicit prepare/publish boundaries, and **one active maintenance interval per publication group** (with operator/partition parallelism inside the interval and concurrency across independent groups).
+2. **G3b-P (independent, evidence-triggered bounded single-depth pipelining):** Once single-interval correctness and recovery are proven, activate bounded single-depth pipelining (`P3.9`) only if measured single-interval freshness is I/O-bound—overlapping compute for interval `k+1` against durable S3 staging/publication of interval `k` (bounded to depth 1, naming `k` as `expected_parent`, counting `k+1` in peak memory reservations, discarding `k+1` immediately if `k` aborts or quarantines, and draining to depth 0 before isolation cutover or reassignment).
 3. **G5 (Advanced execution):** General recursion, nested iteration time, and multi-step speculation remain separately gated capabilities.
 
 ### Practical G0 selection rule (avoid building two engines upfront)
@@ -17,8 +17,10 @@ Build a **lean Rockstream-native Rust runtime** over weighted Apache Arrow batch
 Building two full comparable runtimes (native *and* Timely/Differential) before G1 slows delivery without proportional risk reduction—especially while the initial kernel is strictly acyclic and scalar-epoch, where Timely's multidimensional progress tracker provides minimal advantage and substantial adapter friction against object-store checkpoints and suspension.
 
 Instead, **G0.4 builds and evaluates the minimal native kernel on `W1-G`** against predeclared correctness, resource-bound, and complexity criteria ([qualification](../planning/qualification.md#g0-feasibility-decisions)):
-- **Keep native** if within the ~2-week Foundation timebox it passes exact independent-oracle parity on `W1-G` (including `Q(empty)`, retractions, and simultaneous both-side join updates), enforces explicit memory/queue bounds, and expresses acyclic scalar-epoch progress and single-owner operator state cleanly without ad hoc synchronization or cross-interval state leakage.
-- **Trigger a single bounded Timely/Differential or Feldera/DBSP prototype on `W1-G`** only if the native kernel hits either of those predeclared walls in G0.4—or later in G5 if general recursive/nested-iteration workloads prove uneconomical to build natively.
+- **Keep native** if within the ~2-week Foundation timebox it passes exact independent-oracle parity on `W1-G` (including `Q(empty)`, retractions, and simultaneous both-side join updates), enforces explicit logical batch/state/queue/output bounds and ownership, and expresses acyclic scalar-epoch progress and single-owner operator state cleanly without ad hoc synchronization or cross-interval state leakage.
+- **Trigger a single bounded Timely/Differential or Feldera/DBSP prototype on `W1-G`** only if the native kernel hits a native semantic, logical-bound or progress/state-ownership wall in G0.4—or later in G5 if general recursive/nested-iteration workloads prove uneconomical to build natively.
+
+G0.4 is a bounded feasibility decision, not whole-process memory qualification. Preserve the current inconclusive native-spike and allocation-failure evidence; an independently reviewed verdict under the revised scope is required before G1 starts. G1 runtime work and P2.2/P2.5 must close physical allocation attribution, dependency/shared/temporary bytes, headroom, control reserves and fault/recovery behavior before any G2 runtime preview qualifies; each G6 profile repeats the applicable resource evidence. Expected logical admission exhaustion remains explicit. An allocator abort cannot be labeled a controlled error, and a dependency allocation gap alone does not establish that Timely is the remedy. Do not build a general allocator framework in G0.
 
 Keep the semantic IR, logical time, and durable storage/publication contracts decoupled from runtime scheduling so an evidence-triggered runtime substitution never forces rewriting the compiler or storage protocol.
 

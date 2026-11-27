@@ -1,6 +1,6 @@
 # ADR 0010: single binary, stateless compute scale-to-zero, and workload-eligible hibernation
 
-**Status:** Proposed operational architecture; qualified progressively in G2 and G4. **Date:** 2026-11-26. **Owners:** runtime, storage, connectors, and operations roles.
+**Status:** Proposed operational architecture; qualified progressively in G2, G6-S and G4/G6-D under [ADR 0013](0013-minimum-mechanisms-and-independent-qualification.md). **Date:** 2026-11-26. **Owners:** runtime, storage, connectors, and operations roles.
 
 ## Context
 
@@ -25,6 +25,8 @@ Before entering `Dormant`: serialize admissions/wake requests against the transi
 | Continuous PostgreSQL CDC (holding WAL slots), active Kafka sinks, durable timers | Partial suspension (stateless maintenance/serving scale to zero; ingester/sink stays active) |
 | Low-latency interactive read models (unmeasured `<10 ms` strict-latest target; or unmeasured `≤100 ms` P99 freshness target with optional fast WAL tier) | Low-Latency Cloud profile (Embedded OpenRaft voters resident with durable voter disks; stateless workers elastic), only after G4.0 evidence |
 
+Single-node G6-S qualifies this lifecycle for its selected eligible workloads, including competing cold activation, rejection of uncertain predecessor termination and loss of every local file. Before replacement serving/GC, confirm the predecessor has drained/terminated; a paused process is not presumed dead. Overlapping failover requires separately qualified durable read protection. It uses G2/G3a durable pins and fencing, without requiring independent shared-consumer schedules or distributed drain. G4 adds fleet/pool coordination; G6-D repeats the applicable operations evidence. A continuous source or tight availability SLO can make hibernation ineligible even though the object state is durable.
+
 ## Alternatives and consequences
 
 - **Making full zero-process hibernation a hard P0 veto over every online profile:** Rejected; penalizes the primary online read-model and CDC workloads for a dormancy capability those workloads cannot legally enter.
@@ -32,4 +34,4 @@ Before entering `Dormant`: serialize admissions/wake requests against the transi
 
 ## Evidence
 
-G2 qualifies single-process durable stop/restart from object storage with empty local caches; G3b accounts for shared consumer cursors; G4 qualifies distributed drain, concurrent activation, and stale-owner fencing; G6 qualifies runbooks and measured active/idle economics. [Runtime and operations](../design/runtime-and-operations.md) defines the detailed lifecycle.
+G2 qualifies single-process durable stop/restart from object storage with empty local caches. G6-S qualifies its complete production lifecycle, restore/rollback/runbooks and measured active/idle economics. G3b-I adds independent shared-consumer cursor obligations only when selected. G4 qualifies distributed drain, concurrent activation and stale-owner fencing across pools; G6-D qualifies that production profile. No unmeasured availability, latency or full-suspension guarantee follows from the topology alone. [Runtime and operations](../design/runtime-and-operations.md) defines the detailed lifecycle.
