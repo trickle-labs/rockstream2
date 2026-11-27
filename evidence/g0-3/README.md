@@ -1,5 +1,100 @@
 # G0.3 bounded model runs
 
+## Recovered publication-boundary run
+
+**Verdict: inconclusive.** The isolated source checkout disappeared during a
+later diagnostic; its cause is unknown. The surviving model was recovered on
+base `aff8753778e1748bca9f2d986faf8f90a7410927` and independently reviewed.
+The original checkout commit `c882148342ea1a705265e377e3c6bbee3ee0dd11`
+was not available in an accessible object database. The recovered model was
+reconstructed from the preserved original model and recorded revision-mutant
+patch; the original check script and documentation were unavailable and were
+reconstructed from surviving invocation records and the baseline. Do not treat
+the recovered check script or documentation as byte-identical to the lost files.
+
+The corrected model SHA-256 is
+`30e4c2c050c0ae317e6acae5d6c1428e0e8fb494012005481f6a1278c3ed5526`;
+the executed `models/g0/check.sh` was
+`17446f2a05d085276b01a5e27eb81674a88e5cb0f51a9a9817942e74343184af`;
+`models/g0/count-states.sh` is
+`f0c6e65d466dcfb604c49d511650c57986884123b7c6604bf8313d9df44abaae`.
+The source-hashed reconstructed suite finished status 0 with 107 recorded
+invocations: 59 status 0 and 48 deliberate negative controls with status 1 and
+actual counterexample markers. It checked the three invariants through sixteen
+steps; witnesses and controls have their individually recorded bounds, up to
+nineteen steps. After the suite, one trailing ASCII space was removed from the
+check script's typecheck line; the final script SHA-256 is
+`76f34824a980a4e2b3410841a9ac13b8d040de603d1d6b2beb562fb11ec34137`.
+The archive retains the executed script and a byte comparison confirming this
+is its only change; `sh -n` passed after the edit. The suite was not rerun for
+this shell-inert whitespace change. The capture contains 104 invocations with
+parseable traces;
+typecheck, the invariant run and the separately safe revision-only check have
+no trace. The separate depth-three TLC run finished status 0 with 50,117
+generated and 16,490 distinct **depth-tagged configurations**, zero queued.
+This is not a distinct untagged-state count or an enumeration of the
+sixteen-step symbolic run.
+
+The earlier full suite failed at invocation 87 because the single revision
+bypass produced no counterexample. The metadata-page base check masked it
+within that bound. The reconstructed suite checks that single bypass separately
+for safety and includes a compound revision/page-base bypass with its own
+counterexample; this is a different test, not a retry of the failed assertion
+into green. The failed capture records pre-correction model SHA-256
+`e27466cfaea221ba4ed1d7842f2ca10dc543e7afee86a7202e76423ff2ad632a`
+and check-script hash
+`9497aa16392087abfb488e7fbb216193bb2f829d4b96a8396db2e4ee171b2e69`.
+A later focused capture records the corrected model and a different check-script
+hash `21494b52237b7f653e817e8e52b71607c426a654b6024bcb3a4dfd5230cb4c5e`.
+The two lost check-script contents and their full lineage are not available.
+Earlier intentionally interrupted, superseded and environment-failed attempts
+are retained separately and are not counted as passes. The original capture's
+per-invocation arguments, outputs and statuses remain available.
+
+The restored environment used Quint 0.34.0, Apalache 0.62.4, Node 26.13.1 and
+OpenJDK 21.0.13.1 on Darwin arm64. Quint's npm lockfile is a fresh transitive
+resolution, not the lost lockfile; `protobufjs@7.6.6` postinstall was not run.
+The restored Apalache archive SHA-256 is
+`8ac8488422c30d552735bae11b92a2d014d8e02e8608702acc08f9a2d8a9abb2`,
+the npm lockfile is
+`360799e9945a369203433b09d84ef1ce8371e961e27c6e98b44b6f160b6f11dc`,
+and the downloaded Quint rust-evaluator v0.8.0 executable is
+`c11e59471b5759354943f675824f03522649fd798a9357677d8a31bf5d5c8cde`.
+These identify restored artifacts only; the lost transitive toolchain is not
+claimed byte-identical. The exact outer shell commands and full environment for
+the completed model and TLC runs were not retained; individual recorded Quint
+arguments and the recording wrapper are included. With the same restored tools,
+`QUINT=/path/to/quint models/g0/check.sh` and
+`QUINT=/path/to/quint models/g0/count-states.sh` reconstruct the checks, but
+are not asserted to be the original outer commands.
+
+The recovered source also passed the PostgreSQL-backed fast gate, with
+`PYTHONOPTIMIZE=1`, a fresh target and a disposable PostgreSQL 18.7 cluster.
+The exact command, source hashes, log and status are in `recovered-fast-gate/`
+inside the archive. The first sandboxed initdb failed with `shmget` EPERM before
+any tests; the preserved host-executed run passed and cleaned up its temporary
+database and target. This was an uncommitted recovered source based on
+`aff8753`, not evidence for an untested future integration revision.
+
+The [raw recovery archive](publication-boundaries-recovered-raw.tar.gz) has
+SHA-256 `0d91fae1712e680187c752d4072d19c8f145bc16399641214b488c6be96887e7`.
+It preserves the failed, interrupted and recovered records, tool lockfile,
+source snapshots and appended provenance. Its 3,568 files were compared with
+their source contents after excluding macOS AppleDouble metadata. Secret-pattern
+scans found no matches, but cannot prove absence of sensitive data.
+
+This result does not qualify G0.3 or the full G0 gate. [The model README](../../models/g0/README.md)
+records the explicit bounds and remaining abstraction limits; independent
+review of this recovered candidate and its actual integration revision remains
+required.
+
+The modeled single metadata page can abstract the initial compact immutable
+manifest; it does not select or establish a paged tree. Its allocation-generation
+and protection behavior are model assumptions, and a multi-page dependency graph
+is outside this evidence. [ADR 0014](../../docs/adr/0014-incremental-delivery-and-earned-complexity.md)
+keeps paging evidence-triggered. These clarifications do not change the captured
+model, checks or inconclusive verdict.
+
 ## Namespace, seal and publisher boundaries
 
 On 2026-11-27, the model at integration candidate
