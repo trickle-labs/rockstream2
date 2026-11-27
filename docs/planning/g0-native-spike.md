@@ -89,6 +89,11 @@ only by kernels given the same budget. A new independently reviewed feasibility
 verdict remains necessary; neither this envelope nor the new test qualifies
 allocator failure, shared physical bytes or process headroom.
 
+The spike clones its fixed state and scans fixed-capacity slots; this fanout
+test does not establish efficient incremental scaling as unrelated state grows.
+P1.3 must separately pass the fixed-delta 1×/10×/100× work regression and its
+correct-output scan/copy negative control before the G1 efficiency claim.
+
 On integration source `85ac0be2aaaa89fcc9fea5cad044676d3ce78994`, the
 PostgreSQL-backed fast gate passed with a fresh target and `PYTHONOPTIMIZE=1`;
 the kernel's 19 release tests and compile-fail doctest also passed. An isolated
