@@ -1,11 +1,13 @@
-# G0.4 native feasibility: proposed bounded decision
+# G0.4 native feasibility: bounded decision
 
-**Status: proposed, not a gate pass.** The following assessment recommends a
-scoped native-feasibility pass under [ADR 0013 §5](../../docs/adr/0013-minimum-mechanisms-and-independent-qualification.md).
-It requires independent safety review, applicable integration checks and an
-explicit decision before it can replace the recorded inconclusive verdict.
-The human reviews the completed milestone separately. This proposal does not
-qualify G0, G1, G2, a runtime profile or a release.
+**Verdict: pass, within the bounded scope below.** The reviewed `W1-G` spike
+supports native feasibility for G0.4 under [ADR 0013 §5](../../docs/adr/0013-minimum-mechanisms-and-independent-qualification.md).
+This decision is subject to independent safety review and applicable checks on
+its integration revision. It supersedes the earlier inconclusive *feasibility*
+verdict for this scoped experiment; that historical report and its physical
+resource counterexamples remain valid. The human reviews the completed
+milestone separately. This does not qualify G0, G1, G2, a runtime profile or a
+release.
 
 ## Candidate and observed behavior
 
@@ -41,7 +43,7 @@ separate admission archive records a retry-on-conflict mutant that fails the
 bounded-contention regression and the failing-before/passing-after malformed
 nested-input case. The initial test-build error is retained separately.
 
-## Scope of the proposed decision
+## Scope of the decision
 
 For the tested, unsupported synchronous spike and trusted standard-Arrow
 producer boundary, one exclusive `&mut Kernel` applies one scalar interval at
@@ -65,10 +67,11 @@ with the same budget. The caller owns and accounts for its input backing;
 arbitrary custom Rust `Array` implementations are outside this trusted-code
 boundary.
 
-On this limited evidence, the native feasibility criteria for `W1-G`, scalar
-progress, state ownership and logical admission can be reviewed without
-triggering the predeclared Timely/Differential comparison. This is a bounded
-experiment, not a claim about arbitrary workloads or a supported API.
+On this evidence, the bounded native feasibility criteria for `W1-G`, scalar
+progress, state ownership and logical admission are met. No predeclared native
+wall has been demonstrated, so the Timely/Differential comparison is not
+triggered. This is a bounded experiment, not a claim about arbitrary workloads
+or a supported API.
 
 ## Explicitly outstanding
 

@@ -22,7 +22,7 @@ Instead, **G0.4 builds and evaluates the minimal native kernel on `W1-G`** again
 
 G0.4 is a bounded feasibility decision, not whole-process memory qualification. Preserve the current inconclusive native-spike and allocation-failure evidence; an independently reviewed verdict under the revised scope is required before G1 starts. G1 runtime work and P2.2/P2.5 must close physical allocation attribution, dependency/shared/temporary bytes, headroom, control reserves and fault/recovery behavior before any G2 runtime preview qualifies; each G6 profile repeats the applicable resource evidence. Expected logical admission exhaustion remains explicit. An allocator abort cannot be labeled a controlled error, and a dependency allocation gap alone does not establish that Timely is the remedy. Do not build a general allocator framework in G0.
 
-A [proposed bounded feasibility decision](../../evidence/g0-4/bounded-feasibility-proposal.md) records the post-PR #41 evidence for independent review. It is not an adopted verdict and does not alter the historical inconclusive report or any later resource gate.
+The independently reviewed [bounded feasibility decision](../../evidence/g0-4/bounded-feasibility-decision.md) records a G0.4 native-feasibility pass for the `W1-G` spike under its explicit trusted-input and logical-resource envelope. The historical inconclusive report and physical resource counterexamples remain valid; this decision does not qualify the G0 milestone or any later resource gate.
 
 Keep the semantic IR, logical time, and durable storage/publication contracts decoupled from runtime scheduling so an evidence-triggered runtime substitution never forces rewriting the compiler or storage protocol.
 
