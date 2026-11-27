@@ -157,12 +157,21 @@ pub struct OutputBudget(AtomicUsize);
 
 impl OutputBudget {
     fn reserve(self: &Arc<Self>) -> Result<Ticket, &'static str> {
-        self.0
-            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                (current < MAX_IN_FLIGHT_OUTPUTS).then_some(current + 1)
-            })
-            .map_err(|_| "output backlog limit")?;
-        Ok(Ticket(self.clone()))
+        self.reserve_at(self.0.load(Ordering::Acquire))
+    }
+
+    fn reserve_at(self: &Arc<Self>, observed: usize) -> Result<Ticket, &'static str> {
+        if observed >= MAX_IN_FLIGHT_OUTPUTS {
+            return Err("output backlog limit");
+        }
+        match self
+            .0
+            .compare_exchange(observed, observed + 1, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => Ok(Ticket(self.clone())),
+            Err(current) if current >= MAX_IN_FLIGHT_OUTPUTS => Err("output backlog limit"),
+            Err(_) => Err("output contention limit"),
+        }
     }
 }
 
@@ -334,26 +343,13 @@ impl Kernel {
         if customers.num_columns() != 3 || orders.num_columns() != 4 {
             return Err("invalid schema");
         }
-        let size = customers
-            .get_array_memory_size()
-            .checked_add(orders.get_array_memory_size())
-            .ok_or("input size overflow")?;
-        if size > MAX_INPUT_BYTES
-            || customers
-                .num_rows()
-                .checked_add(orders.num_rows())
-                .ok_or("input size overflow")?
-                > MAX_ROWS
+        if customers
+            .num_rows()
+            .checked_add(orders.num_rows())
+            .ok_or("input size overflow")?
+            > MAX_ROWS
         {
             return Err("input limit");
-        }
-        if customers
-            .columns()
-            .iter()
-            .chain(orders.columns())
-            .any(|a| a.null_count() != 0)
-        {
-            return Err("null input");
         }
         let ids = integers(customers, 0)?;
         let input_regions = customers
@@ -368,6 +364,26 @@ impl Kernel {
         let order_weights = integers(orders, 3)?;
         if customers.schema().field(1).data_type() != &DataType::Utf8 {
             return Err("expected UTF8");
+        }
+        let arrays: [&dyn Array; 7] = [
+            ids,
+            input_regions,
+            input_weights,
+            order_ids,
+            order_customers,
+            cents,
+            order_weights,
+        ];
+        let size = arrays.iter().try_fold(0_usize, |total, array| {
+            total
+                .checked_add(array.get_array_memory_size())
+                .ok_or("input size overflow")
+        })?;
+        if size > MAX_INPUT_BYTES {
+            return Err("input limit");
+        }
+        if arrays.iter().any(|a| a.null_count() != 0) {
+            return Err("null input");
         }
         // A retained buffer remains charged through all Arrow array and slice clones.
         let ticket = self.budget.reserve()?;
@@ -813,6 +829,32 @@ mod tests {
     }
 
     #[test]
+    fn wrong_nested_type_is_rejected_before_recursive_memory_accounting() {
+        let mut kernel = kernel();
+        let before = kernel.fork_state();
+        let field = Arc::new(Field::new("child", DataType::Int64, false));
+        let leaf: arrow_array::ArrayRef = Arc::new(Int64Array::from(Vec::<i64>::new()));
+        let children: Vec<_> = (0..512).map(|_| (field.clone(), leaf.clone())).collect();
+        let nested = arrow_array::StructArray::from(children);
+        let invalid = RecordBatch::try_from_iter(vec![
+            ("id", Arc::new(nested) as _),
+            (
+                "region",
+                Arc::new(StringArray::from(Vec::<&str>::new())) as _,
+            ),
+            ("weight", Arc::new(Int64Array::from(Vec::<i64>::new())) as _),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            kernel.apply(0, &invalid, &orders(&[])),
+            Err("expected non-null BIGINT")
+        );
+        assert_eq!(kernel, before);
+        assert!(kernel.apply(0, &customers(&[]), &orders(&[])).is_ok());
+    }
+
+    #[test]
     fn fixed_storage_reuses_slots_and_preserves_utf8_keys() {
         let mut map = FixedMap::<i64, Region>::default();
         for id in 0..MAX_ROWS as i64 {
@@ -994,8 +1036,21 @@ mod tests {
             .map(|h| h.join().unwrap())
             .filter(|ok| *ok)
             .count();
-        assert_eq!(admitted, MAX_IN_FLIGHT_OUTPUTS);
+        assert!((1..=MAX_IN_FLIGHT_OUTPUTS).contains(&admitted));
         assert_eq!(budget.0.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn stale_reservation_observation_returns_contention_without_leaking() {
+        let budget = Arc::new(OutputBudget::default());
+        let first = budget.reserve().unwrap();
+        assert_eq!(budget.reserve_at(0).unwrap_err(), "output contention limit");
+        let second = budget.reserve().unwrap();
+        assert_eq!(budget.reserve_at(0).unwrap_err(), "output backlog limit");
+        assert_eq!(budget.0.load(Ordering::Acquire), MAX_IN_FLIGHT_OUTPUTS);
+        drop((first, second));
+        assert_eq!(budget.0.load(Ordering::Acquire), 0);
+        assert!(budget.reserve().is_ok());
     }
 
     #[test]
@@ -1085,5 +1140,67 @@ mod tests {
             Err("state limit")
         );
         assert_eq!(kernel, before);
+    }
+
+    #[test]
+    fn bounded_fanout_repeated_retractions_match_batch_oracle() {
+        let mut kernel = kernel();
+        let initial_orders: Vec<_> = (0..127).map(|id| (id, 1, 100, 1)).collect();
+        kernel
+            .apply(0, &customers(&[(1, "N", 1)]), &orders(&initial_orders))
+            .unwrap();
+
+        let changes: Vec<_> = (0..MAX_ROWS)
+            .map(|i| {
+                (
+                    1,
+                    if i + 1 == MAX_ROWS { "S" } else { "N" },
+                    if i % 2 == 0 { -1 } else { 1 },
+                )
+            })
+            .collect();
+        let delta = kernel.apply(1, &customers(&changes), &orders(&[])).unwrap();
+        assert_eq!(delta.num_rows(), 2);
+        let regions = delta
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        let counts = delta
+            .column(1)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap();
+        let sums = delta
+            .column(2)
+            .as_any()
+            .downcast_ref::<Decimal128Array>()
+            .unwrap();
+        let weights = delta
+            .column(3)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap();
+        let actual: BTreeMap<_, _> = (0..delta.num_rows())
+            .map(|i| {
+                (
+                    regions.value(i),
+                    (counts.value(i), sums.value(i), weights.value(i)),
+                )
+            })
+            .collect();
+        assert_eq!(
+            actual,
+            BTreeMap::from([("N", (127, 12_700, -1)), ("S", (127, 12_700, 1))])
+        );
+
+        let oracle_customers = BTreeMap::from([(1, "S".to_owned())]);
+        let oracle_orders = (0..127).map(|id| (id, (1, 100))).collect();
+        let expected = w1g_oracle::evaluate(&oracle_customers, &oracle_orders)
+            .into_iter()
+            .map(|(region, (count, cents))| (region, (count, i128::from(cents))))
+            .collect();
+        assert_eq!(snapshot(&kernel), expected);
+        assert_eq!(kernel.ungrouped_count().unwrap().values(), &[127]);
     }
 }
