@@ -20,8 +20,9 @@ array memory, region strings are at most 32 bytes, and retained customer plus
 order state is at most 128 rows. Output is limited to 256 rows. Before cloning
 state, the kernel computes a checked upper bound for four output scratch vectors,
 rejects a budget overrun and uses fallible reservation for those vectors. It
-checks the returned capacities against the scratch-byte cap; a fallible string
-copy replaces infallible string growth at selected sites, and matching-order
+checks the returned capacities against the scratch-byte cap. Customer, order
+and group state use fixed-capacity inline slots and fixed-width UTF-8 regions,
+so the transactional clone and state updates do not allocate. Matching-order
 scratch is a fixed-size stack array. One synchronous call handles one interval;
 there is no internal batch queue. Exceeding a limit rejects the whole interval,
 and tests check unchanged state on resource and preimage errors. These are
@@ -46,9 +47,10 @@ measurements.
 
 The input/state cardinality checks reject before retaining a 129th row, and
 Arrow input array size is checked before processing. They are not a fallible
-allocator or a reservation of process memory. The current state clone and `BTreeMap` node insertion still allocate
-infallibly. The scratch cap accounts for the four owned vector capacities, not
-allocator metadata, stack, Arrow buffers, maps, shared input, or process
+allocator or a reservation of process memory. The fixed state slots and clone are inline and bounded by their Rust type sizes;
+the `result()` convenience method separately constructs an allocated map. The
+scratch cap accounts for the four owned vector capacities, not allocator
+metadata, stack, Arrow buffers, the convenience map, shared input, or process
 headroom. The reservation regression forces a capacity-overflow error; it does
 not simulate a physical OOM. Output also constructs `StringArray::from(Vec<&str>)`: in pinned
 `arrow-array` 59.3.2, that calls `GenericByteArray::from_iter_values`, which

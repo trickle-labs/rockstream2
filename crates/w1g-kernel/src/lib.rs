@@ -1,6 +1,7 @@
 //! Bounded, single-interval W1-G incremental kernel spike.
 use arrow_array::{Array, Decimal128Array, Int64Array, RecordBatch, StringArray};
 use arrow_schema::DataType;
+use std::borrow::Borrow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -17,15 +18,113 @@ fn reserve<T>(buffer: &mut Vec<T>, rows: usize) -> Result<(), &'static str> {
         .map_err(|_| "allocation failed")
 }
 
-fn copy_region(region: &str) -> Result<String, &'static str> {
-    let mut copy = String::new();
-    copy.try_reserve_exact(region.len())
-        .map_err(|_| "allocation failed")?;
-    copy.push_str(region);
-    Ok(copy)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Region {
+    bytes: [u8; MAX_REGION_BYTES],
+    len: usize,
+}
+
+impl Region {
+    fn new(value: &str) -> Result<Self, &'static str> {
+        if value.len() > MAX_REGION_BYTES {
+            return Err("region limit");
+        }
+        let mut bytes = [0; MAX_REGION_BYTES];
+        bytes[..value.len()].copy_from_slice(value.as_bytes());
+        Ok(Self {
+            bytes,
+            len: value.len(),
+        })
+    }
+
+    fn as_str(&self) -> &str {
+        std::str::from_utf8(&self.bytes[..self.len]).expect("region originates from UTF-8")
+    }
+}
+
+impl Borrow<str> for Region {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct FixedMap<K, V> {
+    entries: [Option<(K, V)>; MAX_ROWS],
+    len: usize,
+}
+
+impl<K, V> Default for FixedMap<K, V> {
+    fn default() -> Self {
+        Self {
+            entries: std::array::from_fn(|_| None),
+            len: 0,
+        }
+    }
+}
+
+impl<K, V> FixedMap<K, V> {
+    fn len(&self) -> usize {
+        self.len
+    }
+    fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.entries
+            .iter()
+            .filter_map(|entry| entry.as_ref().map(|(k, v)| (k, v)))
+    }
+    fn values(&self) -> impl Iterator<Item = &V> {
+        self.iter().map(|(_, value)| value)
+    }
+    fn get<Q: ?Sized + Eq>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+    {
+        self.iter()
+            .find(|(k, _)| <K as Borrow<Q>>::borrow(*k) == key)
+            .map(|(_, v)| v)
+    }
+    fn get_mut<Q: ?Sized + Eq>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+    {
+        self.entries
+            .iter_mut()
+            .filter_map(Option::as_mut)
+            .find(|(k, _)| k.borrow() == key)
+            .map(|(_, v)| v)
+    }
+    fn contains_key<Q: ?Sized + Eq>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+    {
+        self.get(key).is_some()
+    }
+    fn remove<Q: ?Sized + Eq>(&mut self, key: &Q)
+    where
+        K: Borrow<Q>,
+    {
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.as_ref().is_some_and(|(k, _)| k.borrow() == key))
+        {
+            *entry = None;
+            self.len -= 1;
+        }
+    }
+    fn insert(&mut self, key: K, value: V) -> Result<(), &'static str> {
+        let entry = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.is_none())
+            .ok_or("state limit")?;
+        *entry = Some((key, value));
+        self.len += 1;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Order {
     customer: i64,
     cents: i64,
@@ -34,9 +133,9 @@ struct Order {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Kernel {
     epoch: u64,
-    customers: BTreeMap<i64, String>,
-    orders: BTreeMap<i64, Order>,
-    groups: BTreeMap<String, (i64, i128)>,
+    customers: FixedMap<i64, Region>,
+    orders: FixedMap<i64, Order>,
+    groups: FixedMap<Region, (i64, i128)>,
 }
 
 fn integers(batch: &RecordBatch, column: usize) -> Result<&Int64Array, &'static str> {
@@ -56,8 +155,11 @@ impl Kernel {
         Ok(Int64Array::from(vec![count]))
     }
 
-    pub fn result(&self) -> &BTreeMap<String, (i64, i128)> {
-        &self.groups
+    pub fn result(&self) -> BTreeMap<String, (i64, i128)> {
+        self.groups
+            .iter()
+            .map(|(region, value)| (region.as_str().to_owned(), *value))
+            .collect()
     }
 
     fn adjust(&mut self, region: &str, cents: i64, weight: i64) -> Result<(), &'static str> {
@@ -78,7 +180,7 @@ impl Kernel {
         } else if let Some(group) = self.groups.get_mut(region) {
             *group = (count, sum);
         } else {
-            self.groups.insert(copy_region(region)?, (count, sum));
+            self.groups.insert(Region::new(region)?, (count, sum))?;
         }
         Ok(())
     }
@@ -142,7 +244,7 @@ impl Kernel {
         if customers.schema().field(1).data_type() != &DataType::Utf8 {
             return Err("expected UTF8");
         }
-        // shortcut: map and Arrow allocations remain unaccounted, use a fallible pool before promotion.
+        // shortcut: Arrow output allocations remain unaccounted, use fallible construction before promotion.
         let possible_groups = self
             .customers
             .len()
@@ -212,9 +314,13 @@ impl Kernel {
                     if next.customers.len() + next.orders.len() >= MAX_ROWS {
                         return Err("state limit");
                     }
-                    next.customers.insert(id, copy_region(region)?);
+                    next.customers.insert(id, Region::new(region)?)?;
                 }
-                -1 if next.customers.get(&id).is_some_and(|r| r == region) => {
+                -1 if next
+                    .customers
+                    .get(&id)
+                    .is_some_and(|r| r.as_str() == region) =>
+                {
                     next.customers.remove(&id);
                 }
                 _ => return Err("invalid customer delta"),
@@ -256,7 +362,7 @@ impl Kernel {
                     if next.customers.len() + next.orders.len() >= MAX_ROWS {
                         return Err("state limit");
                     }
-                    next.orders.insert(id, order.clone());
+                    next.orders.insert(id, order)?;
                 }
                 -1 if next.orders.get(&id) == Some(&order) => {
                     next.orders.remove(&id);
@@ -264,8 +370,8 @@ impl Kernel {
                 _ => return Err("invalid order delta"),
             }
             if let Some(region) = next.customers.get(&order.customer) {
-                let region = copy_region(region)?;
-                next.adjust(&region, order.cents, weight)?;
+                let region = *region;
+                next.adjust(region.as_str(), order.cents, weight)?;
             }
             if next
                 .customers
@@ -278,16 +384,16 @@ impl Kernel {
             }
         }
         next.epoch = next.epoch.checked_add(1).ok_or("epoch overflow")?;
-        for (region, old) in &self.groups {
-            if next.groups.get(region) != Some(old) {
+        for (region, old) in self.groups.iter() {
+            if next.groups.get(region.as_str()) != Some(old) {
                 regions.push(region.as_str());
                 counts.push(old.0);
                 sums.push(old.1);
                 weights.push(-1);
             }
         }
-        for (region, new) in &next.groups {
-            if self.groups.get(region) != Some(new) {
+        for (region, new) in next.groups.iter() {
+            if self.groups.get(region.as_str()) != Some(new) {
                 regions.push(region.as_str());
                 counts.push(new.0);
                 sums.push(new.1);
@@ -431,7 +537,7 @@ mod tests {
                 .collect::<BTreeMap<_, _>>();
             assert_eq!(
                 kernel.result(),
-                &oracle,
+                oracle,
                 "independent batch at cut {}",
                 epoch + 1
             );
@@ -452,7 +558,7 @@ mod tests {
                     );
                 }
             }
-            assert_eq!(kernel.result(), &want, "cut {}", epoch + 1);
+            assert_eq!(kernel.result(), want, "cut {}", epoch + 1);
             let expected_bag = want
                 .iter()
                 .map(|(region, (count, sum))| ((region.clone(), *count, *sum), 1))
@@ -535,6 +641,26 @@ mod tests {
             Err("invalid order delta")
         );
         assert_eq!(kernel, before);
+    }
+
+    #[test]
+    fn fixed_storage_reuses_slots_and_preserves_utf8_keys() {
+        let mut map = FixedMap::<i64, Region>::default();
+        for id in 0..MAX_ROWS as i64 {
+            map.insert(id, Region::new("é\0x").unwrap()).unwrap();
+        }
+        assert_eq!(
+            map.insert(999, Region::new("x").unwrap()),
+            Err("state limit")
+        );
+        assert_eq!(map.len(), MAX_ROWS);
+        assert_eq!(map.get(&0).unwrap().as_str(), "é\0x");
+        map.remove(&0);
+        map.insert(999, Region::new("x").unwrap()).unwrap();
+        assert_eq!(map.len(), MAX_ROWS);
+        assert!(map.get(&0).is_none());
+        assert_eq!(map.get(&999).unwrap().as_str(), "x");
+        assert_eq!(Region::new(&"é".repeat(17)), Err("region limit"));
     }
 
     #[test]
