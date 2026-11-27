@@ -1,0 +1,19 @@
+# epoch,table,weight,id,customer-or-region,amount-cents
+0,customer,1,1,North,
+0,customer,1,2,South,
+0,order,1,101,1,1000
+0,order,1,102,1,2000
+0,order,1,103,2,700
+1,customer,-1,1,North,
+1,customer,1,1,South,
+1,order,-1,102,1,2000
+1,order,1,102,1,2500
+1,order,-1,103,2,700
+1,order,1,104,2,400
+2,order,-1,101,1,1000
+2,customer,-1,2,South,
+2,customer,1,2,North,
+2,order,-1,104,2,400
+2,order,1,104,2,600
+3,order,-1,102,1,2500
+3,order,-1,104,2,600

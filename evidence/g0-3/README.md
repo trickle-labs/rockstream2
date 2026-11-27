@@ -11,7 +11,7 @@ retired-publication witness/control and eleven-step duplicate-retry control.
 Each mutant produced a counterexample. This is bounded model evidence, not
 proof of an implementation or a gate decision. The [model README](../../models/g0/README.md)
 records the abstractions and the coupled retired-publication fault; independent
-safety review, integration-candidate checks and human approval remain open.
+safety review, integration-candidate checks and human milestone review remain open.
 
 [Raw run and traces](9bd35ec-raw-run.tar.gz) (SHA-256
 `e2b74b5faef6837c322fb5f0071b596f30a52b663bcd0e85e5a74d0a1fbc3bc0`)
@@ -47,8 +47,8 @@ check script at source commit `f4424cffbc53d0a9513f5b6720b184d51b1ee541`
 completed the recorded check with exit code 0. The model is bounded and has
 material limitations listed in [its README](../../models/g0/README.md); this is
 not evidence that a storage implementation or an entire gate is correct.
-Independent safety review, integration-candidate checks and the required human
-approval remain open.
+Independent safety review, integration-candidate checks and the human
+milestone review remain open.
 
 [Raw run and traces](f4424cf-raw-run.tar.gz) (SHA-256
 `785b2b35e243f9db862ecd67dbbff14e697cc4f80c22a54053798551e826ca73`)
