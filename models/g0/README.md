@@ -6,8 +6,11 @@ Publication atomically updates both visible partition flags and the root after
 checking the root revision, publication parent, owner generation, complete
 receipt set, receipt attempts, staged-object durability, staging protection and
 object retirement state. Ownership reassignment atomically registers the new
-owner generation's open namespace. A sealed preparation captures the attempt,
-parent, owner and receipt facts; a separate transition persists the validation
+owner generation's open namespace. The prepared logical publisher is bound
+to the seal and compared with the current authorized publisher. Authenticated
+publisher identity is assumed; credential forgery is not modeled. An arbitrary
+committer can submit the operation but its identity grants no authority. A
+sealed preparation captures the attempt, parent, owner and receipt facts; a separate transition persists the validation
 record before publication. Root CAS conflicts can refresh the revision while
 retaining the original parent, generation and plan. One refresh is allowed per
 retry episode; a further conflict defers the still-protected preparation, and a
@@ -57,8 +60,8 @@ witness reaches a retired, unpinned object younger than the minimum; the
 young-collection mutant bypasses only that age guard. A second witness reaches
 an old, unreferenced object without a retirement record; a mutant bypasses the
 retirement guard and checks that deletion without retirement violates GC safety.
-Additional controls check namespace acquisition, an undurable seal and an
-unsafe retry that rebinds an old sealed preparation to a new owner. The
+Additional controls check namespace acquisition, an unauthorized logical
+publisher, an undurable seal and an unsafe retry that rebinds an old sealed preparation to a new owner. The
 namespace-publication control combines a faulty close that leaves a stale
 protection view with bypassing the final namespace check; it advances the root
 and requires a refresh before the invalid publication. With the additional
@@ -87,8 +90,8 @@ Apalache is symbolic and does not report an enumerated state count. Separately,
 `models/g0/count-states.sh` runs a depth-3 exhaustive TLC exploration using
 Quint 0.34.0 and its Apalache 0.62.4 distribution. It appends a depth variable
 and wrapper actions to the same model without modifying its transitions. The
-revised run explored 3,182 distinct depth-tagged configurations (10,617
-generated, zero queued); a protocol state reached at
+revised publisher-aware run explored 6,260 distinct depth-tagged
+configurations (21,075 generated, zero queued); a protocol state reached at
 multiple depths is counted multiple times. The [evidence](../../evidence/g0-3/README.md#idempotency-controls)
 records the earlier run; no projected count was computed for the revised model. The
 [earlier projection](../../evidence/g0-3/README.md#depth-3-state-count) applies

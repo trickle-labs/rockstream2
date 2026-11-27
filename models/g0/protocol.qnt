@@ -1,30 +1,32 @@
 // A finite abstraction: two publication attempts, two owner generations and one GC object.
-// Depth-3 TLC: 3,182 depth-tagged configurations; separate Apalache symbolic bound: 13 steps.
+// Depth-3 TLC: 6,260 depth-tagged configurations; separate Apalache symbolic bound: 13 steps.
 module protocol {
   type State = {
-    head: int, publicationHead: int, planRevision: int, preparedPlan: int, generation: int, namespaceGeneration: int, namespaceOpen: bool, stageGeneration: int, prepared: bool, parent: int, revision: int, owner: int, preparedGeneration: int, refreshed: bool, retryCount: int, retryDeferred: bool,
+    head: int, publicationHead: int, planRevision: int, preparedPlan: int, generation: int, authorizedPublisher: int, preparedPublisher: int, sealedPublisher: int, committedVia: int, namespaceGeneration: int, namespaceOpen: bool, stageGeneration: int, prepared: bool, parent: int, revision: int, owner: int, preparedGeneration: int, refreshed: bool, retryCount: int, retryDeferred: bool,
     receipts: Set[int], duplicate: bool, attempt: int, lastAttempt: int, abandonedAttempt: int, receipt1Attempt: int, receipt2Attempt: int, receipt1Id: int, receipt2Id: int, receipt1Object: int, receipt2Object: int, receipt1Scope: int, receipt2Scope: int, sealed: bool, sealDurable: bool, sealedAttempt: int, sealedParent: int, sealedOwner: int, sealedPlan: int, sealedReceipt1: int, sealedReceipt2: int, sealedReceipts: Set[int], sealedDuplicate: bool, sealedReceipt1Attempt: int, sealedReceipt2Attempt: int, sealedReceipt1Scope: int, sealedReceipt2Scope: int, sealedReceipt1Object: int, sealedReceipt2Object: int, stageDurable: bool, stageProtected: bool, stageClosed: bool, stageDurabilityAdvanced: bool, publishedDataReady: bool, op: int, done1: bool, done2: bool, metadataDone: bool, effects1: int, effects2: int, publications: int, visible1: bool, visible2: bool,
     response1: bool, outcome1: int, reply1: int, committed1: int, response2: bool, outcome2: int, reply2: int, committed2: int, pinned: bool, pinPending: bool, pinRevision: int, retirePending: bool, retireRevision: int, root: bool, retired: bool, deleted: bool, age: int,
-    stalePublished: bool, badNamespaceCommit: bool, badDataCommit: bool, badPlanCommit: bool, badSealCommit: bool, badPublication: bool, badParent: bool, badFence: bool, badGc: bool
+    stalePublished: bool, badPublisherCommit: bool, badNamespaceCommit: bool, badDataCommit: bool, badPlanCommit: bool, badSealCommit: bool, badPublication: bool, badParent: bool, badFence: bool, badGc: bool
   }
   var s: State
 
   action init = s' = {
-    head: 0, publicationHead: 0, planRevision: 1, preparedPlan: 1, generation: 0, namespaceGeneration: 0, namespaceOpen: true, stageGeneration: 0, prepared: false, parent: 0, revision: 0, owner: 0, preparedGeneration: 0, refreshed: false, retryCount: 0, retryDeferred: false,
+    head: 0, publicationHead: 0, planRevision: 1, preparedPlan: 1, generation: 0, authorizedPublisher: 1, preparedPublisher: 0, sealedPublisher: 0, committedVia: 0, namespaceGeneration: 0, namespaceOpen: true, stageGeneration: 0, prepared: false, parent: 0, revision: 0, owner: 0, preparedGeneration: 0, refreshed: false, retryCount: 0, retryDeferred: false,
     receipts: Set(), duplicate: false, attempt: 0, lastAttempt: 0, abandonedAttempt: 0, receipt1Attempt: 0, receipt2Attempt: 0, receipt1Id: 0, receipt2Id: 0, receipt1Object: 0, receipt2Object: 0, receipt1Scope: 0, receipt2Scope: 0, sealed: false, sealDurable: false, sealedAttempt: 0, sealedParent: 0, sealedOwner: 0, sealedPlan: 0, sealedReceipt1: 0, sealedReceipt2: 0, sealedReceipts: Set(), sealedDuplicate: false, sealedReceipt1Attempt: 0, sealedReceipt2Attempt: 0, sealedReceipt1Scope: 0, sealedReceipt2Scope: 0, sealedReceipt1Object: 0, sealedReceipt2Object: 0, stageDurable: false, stageProtected: false, stageClosed: false, stageDurabilityAdvanced: false, publishedDataReady: false, op: 1, done1: false, done2: false, metadataDone: false, effects1: 0, effects2: 0, publications: 0, visible1: false, visible2: false,
     response1: false, outcome1: 0, reply1: 0, committed1: 0, response2: false, outcome2: 0, reply2: 0, committed2: 0, pinned: false, pinPending: false, pinRevision: 0, retirePending: false, retireRevision: 0, root: true, retired: false, deleted: false, age: 0,
-    stalePublished: false, badNamespaceCommit: false, badDataCommit: false, badPlanCommit: false, badSealCommit: false, badPublication: false, badParent: false, badFence: false, badGc: false
+    stalePublished: false, badPublisherCommit: false, badNamespaceCommit: false, badDataCommit: false, badPlanCommit: false, badSealCommit: false, badPublication: false, badParent: false, badFence: false, badGc: false
   }
 
+  // Logical publisher identity is authenticated; credential forgery is outside this model.
   action prepare(reuse) = {
     nondet operation = Set(1, 2).oneOf()
+    nondet publisher = Set(1, 2).oneOf()
     all {
       not(s.prepared), not(s.retired), not(s.deleted),
       s.namespaceOpen, s.namespaceGeneration == s.generation,
       not(s.stageProtected) or s.stageGeneration == s.namespaceGeneration,
       if (reuse) s.lastAttempt > 0 else s.lastAttempt < 2,
       s' = s.with("prepared", true).with("parent", s.publicationHead).with("revision", s.head)
-        .with("owner", s.generation).with("preparedGeneration", s.generation).with("preparedPlan", s.planRevision).with("refreshed", false).with("retryCount", 0).with("retryDeferred", false).with("receipts", Set()).with("duplicate", false).with("attempt", if (reuse) s.lastAttempt else s.lastAttempt + 1)
+        .with("owner", s.generation).with("preparedPublisher", publisher).with("preparedGeneration", s.generation).with("preparedPlan", s.planRevision).with("refreshed", false).with("retryCount", 0).with("retryDeferred", false).with("receipts", Set()).with("duplicate", false).with("attempt", if (reuse) s.lastAttempt else s.lastAttempt + 1)
         .with("lastAttempt", if (reuse) s.lastAttempt else s.lastAttempt + 1).with("receipt1Attempt", 0).with("receipt2Attempt", 0).with("receipt1Id", 0).with("receipt2Id", 0).with("receipt1Object", 0).with("receipt2Object", 0).with("stageDurable", false).with("stageProtected", true).with("stageGeneration", s.namespaceGeneration).with("stageClosed", false).with("stageDurabilityAdvanced", false).with("receipt1Scope", 0).with("receipt2Scope", 0).with("sealed", false).with("sealDurable", false).with("op", operation)
     }
   }
@@ -55,7 +57,7 @@ module protocol {
   val expectedScope = if (s.preparedPlan == 1) 1 else 3
 
   val sealMatches = s.sealed and s.sealedAttempt == s.attempt and
-    s.sealedParent == s.parent and s.sealedOwner == s.owner and s.sealedPlan == s.preparedPlan and
+    s.sealedParent == s.parent and s.sealedOwner == s.owner and s.sealedPublisher == s.preparedPublisher and s.sealedPlan == s.preparedPlan and
     s.sealedReceipt1 == s.receipt1Id and s.sealedReceipt2 == s.receipt2Id and
     s.sealedReceipts == s.receipts and s.sealedDuplicate == s.duplicate and
     s.sealedReceipt1Attempt == s.receipt1Attempt and s.sealedReceipt2Attempt == s.receipt2Attempt and
@@ -69,7 +71,7 @@ module protocol {
       s.receipt1Scope == expectedScope and s.receipt2Scope == expectedScope and
       s.receipt1Object == 1 and s.receipt2Object == 1) or badReceipts,
     s' = s.with("sealed", true).with("sealedAttempt", s.attempt)
-      .with("sealedParent", s.parent).with("sealedOwner", s.owner).with("sealedPlan", s.preparedPlan)
+      .with("sealedParent", s.parent).with("sealedOwner", s.owner).with("sealedPublisher", s.preparedPublisher).with("sealedPlan", s.preparedPlan)
       .with("sealedReceipt1", s.receipt1Id).with("sealedReceipt2", s.receipt2Id)
       .with("sealedReceipts", s.receipts).with("sealedDuplicate", s.duplicate)
       .with("sealedReceipt1Attempt", s.receipt1Attempt).with("sealedReceipt2Attempt", s.receipt2Attempt)
@@ -87,7 +89,10 @@ module protocol {
     s.stageGeneration == s.preparedGeneration and s.stageGeneration == s.namespaceGeneration
 
   // The two expected partition receipts are bound to this prepared attempt.
-  action publish(badReceipts, badOwner, badRetry, ignoreParent, ignoreRetirement, partial, ignoreRevision, ignoreSeal, ignorePlan, ignoreData, omitOutcome, ignoreNamespace) = all {
+  action publish(badReceipts, badOwner, badRetry, ignoreParent, ignoreRetirement, partial, ignoreRevision, ignoreSeal, ignorePlan, ignoreData, omitOutcome, ignoreNamespace, ignorePublisher) = {
+    // The committer is recorded only for witnesses and grants no authority.
+    nondet committer = Set(1, 2).oneOf()
+    all {
     s.prepared,
     s.parent == s.publicationHead or ignoreParent,
     s.revision == s.head or ignoreRevision,
@@ -99,12 +104,15 @@ module protocol {
       s.receipt1Scope == expectedScope and s.receipt2Scope == expectedScope and
       s.receipt1Object == 1 and s.receipt2Object == 1) or badReceipts,
     s.owner == s.generation or badOwner,
+    s.preparedPublisher == s.authorizedPublisher or ignorePublisher,
     (s.op == 1 and (not(s.done1) or badRetry)) or (s.op == 2 and (not(s.done2) or badRetry)),
     (not(s.retired) and not(s.deleted)) or ignoreRetirement,
     s.head < 4,
     s' = s.with("head", s.head + 1).with("publicationHead", s.publicationHead + 1).with("prepared", false).with("root", true)
       .with("badGc", s.badGc or s.retired or s.deleted)
       .with("badNamespaceCommit", s.badNamespaceCommit or not(namespaceMatches))
+      .with("badPublisherCommit", s.badPublisherCommit or s.preparedPublisher != s.authorizedPublisher)
+      .with("committedVia", committer)
       .with("done1", s.done1 or s.op == 1).with("done2", s.done2 or s.op == 2)
       .with("effects1", s.effects1 + if (s.op == 1) 1 else 0)
       .with("effects2", s.effects2 + if (s.op == 2) 1 else 0)
@@ -121,12 +129,13 @@ module protocol {
       .with("badParent", s.badParent or s.parent != s.publicationHead or s.revision != s.head)
       .with("badPublication", s.badPublication or s.receipts != Set(1, 2) or s.duplicate or (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt) or s.receipt1Scope != expectedScope or s.receipt2Scope != expectedScope or s.receipt1Object != 1 or s.receipt2Object != 1)
       .with("badFence", s.badFence or s.preparedGeneration != s.generation)
+    }
   }
   action abandon = all { s.prepared, s' = s.with("prepared", false).with("abandonedAttempt", s.attempt) }
   // Owner generation and its preallocated namespace are registered in one CAS.
   action reassign(bad) = all {
     s.generation == 0, s.head < 4,
-    s' = s.with("generation", 1).with("namespaceGeneration", if (bad) 0 else 1)
+    s' = s.with("generation", 1).with("authorizedPublisher", 2).with("namespaceGeneration", if (bad) 0 else 1)
       .with("namespaceOpen", true).with("head", s.head + 1)
   }
   // Refresh only the CAS token; the prepared parent and generation stay fixed.
@@ -206,9 +215,14 @@ module protocol {
     s' = s.with("deleted", true)
   }
 
-  action step = any { prepare(false), receive, seal(false), persistSeal, publish(false, false, false, false, false, false, false, false, false, false, false, false), abandon, reassign(false),
+  action step = any { prepare(false), receive, seal(false), persistSeal, publish(false, false, false, false, false, false, false, false, false, false, false, false, false), abandon, reassign(false),
     reconcile(false), reconcile2(false), advance, changePlan, refresh(false), deferRetry, resumeRetry, makeStageDurable, closeStage, competingPublish, tick, preparePin, prepareRetire(false), refreshPin, refreshRetire, commitPin(false), commitRetire(false), unpin, releaseRoot, reference(false), collect }
   action tamperReceipt = all { s.prepared, s.sealed, s.receipt1Id != 3, s' = s.with("receipt1Id", 3) }
+  action bad_publisher_step = any {
+    step,
+    all { s.preparedPublisher != s.authorizedPublisher,
+      publish(false, false, false, false, false, false, false, false, false, false, false, false, true) }
+  }
   action bad_namespace_step = any { step, reassign(true) }
   // Simulate closure failing to revoke a stale protection view, then bypass
   // the independent publication namespace check.
@@ -218,38 +232,38 @@ module protocol {
   }
   action bad_namespace_publication_step = any {
     step, unsafeCloseNamespace,
-    all { not(s.namespaceOpen), publish(false, false, false, false, false, false, false, false, false, false, false, true) }
+    all { not(s.namespaceOpen), publish(false, false, false, false, false, false, false, false, false, false, false, true, false) }
   }
-  action bad_retry_revalidation_step = any { step, unsafeRetryRefence, all { s.preparedGeneration != s.generation, publish(false, false, false, false, false, false, false, false, false, false, false, true) } }
-  action bad_undurable_seal_step = any { step, all { s.sealed, not(s.sealDurable), publish(false, false, false, false, false, false, false, true, false, false, false, false) } }
-  action bad_seal_step = any { step, tamperReceipt, all { s.sealed, s.sealDurable, s.receipt1Id == 3, s.sealedReceipt1 != 3, publish(false, false, false, false, false, false, false, true, false, false, false, false) } }
-  action bad_atomic_step = any { step, publish(false, false, false, false, false, true, false, false, false, false, false, false) }
+  action bad_retry_revalidation_step = any { step, unsafeRetryRefence, all { s.preparedGeneration != s.generation, publish(false, false, false, false, false, false, false, false, false, false, false, true, false) } }
+  action bad_undurable_seal_step = any { step, all { s.sealed, not(s.sealDurable), publish(false, false, false, false, false, false, false, true, false, false, false, false, false) } }
+  action bad_seal_step = any { step, tamperReceipt, all { s.sealed, s.sealDurable, s.receipt1Id == 3, s.sealedReceipt1 != 3, publish(false, false, false, false, false, false, false, true, false, false, false, false, false) } }
+  action bad_atomic_step = any { step, publish(false, false, false, false, false, true, false, false, false, false, false, false, false) }
   action bad_reuse_step = any { step, prepare(true) }
-  action bad_publication_step = any { step, seal(true), publish(true, false, false, false, false, false, false, false, false, false, false, false) }
-  action bad_fencing_step = any { step, publish(false, true, false, false, false, false, false, false, false, false, false, true) }
-  action bad_retry_step = any { step, all { s.op == 1, publish(false, false, true, false, false, false, false, false, false, false, false, false) } }
-  action bad_duplicate_step = any { step, all { s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), s.duplicate, s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == expectedScope, s.receipt2Scope == expectedScope, seal(true) }, all { s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), s.duplicate, s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == expectedScope, s.receipt2Scope == expectedScope, publish(true, false, false, false, false, false, false, false, false, false, false, false) } }
-  action bad_foreign_step = any { step, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Scope == 1, s.receipt2Scope == 1, (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), seal(true) }, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Scope == 1, s.receipt2Scope == 1, (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), publish(true, false, false, false, false, false, false, false, false, false, false, false) } }
-  action bad_missing_step = any { step, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipts == Set(1), s.receipt1Attempt == s.attempt, s.receipt1Scope == 1, seal(true) }, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipts == Set(1), s.receipt1Attempt == s.attempt, s.receipt1Scope == 1, publish(true, false, false, false, false, false, false, false, false, false, false, false) } }
-  action bad_mixed_step = any { step, all { s.preparedPlan == 1, s.abandonedAttempt == 1, s.attempt == 2, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, s.receipt1Scope == 1, s.receipt2Scope == 1, not(s.duplicate), seal(true) }, all { s.preparedPlan == 1, s.abandonedAttempt == 1, s.attempt == 2, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, s.receipt1Scope == 1, s.receipt2Scope == 1, not(s.duplicate), publish(true, false, false, false, false, false, false, false, false, false, false, false) } }
-  action bad_interval_step = any { step, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 2, s.receipt2Scope == 1, seal(true) }, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 2, s.receipt2Scope == 1, publish(true, false, false, false, false, false, false, false, false, false, false, false) } }
-  action bad_plan_step = any { step, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 3, s.receipt2Scope == 1, seal(true) }, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 3, s.receipt2Scope == 1, publish(true, false, false, false, false, false, false, false, false, false, false, false) } }
-  action bad_plan_revision_step = any { step, all { s.sealed, s.refreshed, s.preparedPlan == 1, s.sealedPlan == 1, s.planRevision == 2, s.parent == s.publicationHead, s.owner == s.generation, publish(false, false, false, false, false, false, false, false, true, false, false, false) } }
-  action bad_foreign_object_step = any { step, all { s.stageDurable, s.stageProtected, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == expectedScope, s.receipt2Scope == expectedScope, s.receipt1Object == 2, s.receipt2Object == 1, seal(true) }, all { s.stageDurable, s.stageProtected, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == expectedScope, s.receipt2Scope == expectedScope, s.receipt1Object == 2, s.receipt2Object == 1, publish(true, false, false, false, false, false, false, false, false, false, false, false) } }
-  action bad_undurable_step = any { step, all { s.sealed, not(s.stageDurable), s.stageProtected, publish(false, false, false, false, false, false, false, false, false, true, false, false) } }
-  action bad_unprotected_step = any { step, all { s.sealed, s.stageDurable, s.stageClosed, not(s.stageProtected), publish(false, false, false, false, false, false, false, false, false, true, false, true) } }
+  action bad_publication_step = any { step, seal(true), publish(true, false, false, false, false, false, false, false, false, false, false, false, false) }
+  action bad_fencing_step = any { step, publish(false, true, false, false, false, false, false, false, false, false, false, true, false) }
+  action bad_retry_step = any { step, all { s.op == 1, publish(false, false, true, false, false, false, false, false, false, false, false, false, false) } }
+  action bad_duplicate_step = any { step, all { s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), s.duplicate, s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == expectedScope, s.receipt2Scope == expectedScope, seal(true) }, all { s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), s.duplicate, s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == expectedScope, s.receipt2Scope == expectedScope, publish(true, false, false, false, false, false, false, false, false, false, false, false, false) } }
+  action bad_foreign_step = any { step, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Scope == 1, s.receipt2Scope == 1, (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), seal(true) }, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Scope == 1, s.receipt2Scope == 1, (s.receipt1Attempt != s.attempt or s.receipt2Attempt != s.attempt), publish(true, false, false, false, false, false, false, false, false, false, false, false, false) } }
+  action bad_missing_step = any { step, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipts == Set(1), s.receipt1Attempt == s.attempt, s.receipt1Scope == 1, seal(true) }, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipts == Set(1), s.receipt1Attempt == s.attempt, s.receipt1Scope == 1, publish(true, false, false, false, false, false, false, false, false, false, false, false, false) } }
+  action bad_mixed_step = any { step, all { s.preparedPlan == 1, s.abandonedAttempt == 1, s.attempt == 2, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, s.receipt1Scope == 1, s.receipt2Scope == 1, not(s.duplicate), seal(true) }, all { s.preparedPlan == 1, s.abandonedAttempt == 1, s.attempt == 2, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), s.receipt1Attempt == 1, s.receipt2Attempt == 2, s.receipt1Scope == 1, s.receipt2Scope == 1, not(s.duplicate), publish(true, false, false, false, false, false, false, false, false, false, false, false, false) } }
+  action bad_interval_step = any { step, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 2, s.receipt2Scope == 1, seal(true) }, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 2, s.receipt2Scope == 1, publish(true, false, false, false, false, false, false, false, false, false, false, false, false) } }
+  action bad_plan_step = any { step, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 3, s.receipt2Scope == 1, seal(true) }, all { s.preparedPlan == 1, s.stageDurable, s.stageProtected, s.receipt1Object == 1, s.receipt2Object == 1, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == 3, s.receipt2Scope == 1, publish(true, false, false, false, false, false, false, false, false, false, false, false, false) } }
+  action bad_plan_revision_step = any { step, all { s.sealed, s.refreshed, s.preparedPlan == 1, s.sealedPlan == 1, s.planRevision == 2, s.parent == s.publicationHead, s.owner == s.generation, publish(false, false, false, false, false, false, false, false, true, false, false, false, false) } }
+  action bad_foreign_object_step = any { step, all { s.stageDurable, s.stageProtected, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == expectedScope, s.receipt2Scope == expectedScope, s.receipt1Object == 2, s.receipt2Object == 1, seal(true) }, all { s.stageDurable, s.stageProtected, s.receipts == Set(1, 2), not(s.duplicate), s.receipt1Attempt == s.attempt, s.receipt2Attempt == s.attempt, s.receipt1Scope == expectedScope, s.receipt2Scope == expectedScope, s.receipt1Object == 2, s.receipt2Object == 1, publish(true, false, false, false, false, false, false, false, false, false, false, false, false) } }
+  action bad_undurable_step = any { step, all { s.sealed, not(s.stageDurable), s.stageProtected, publish(false, false, false, false, false, false, false, false, false, true, false, false, false) } }
+  action bad_unprotected_step = any { step, all { s.sealed, s.stageDurable, s.stageClosed, not(s.stageProtected), publish(false, false, false, false, false, false, false, false, false, true, false, true, false) } }
   action bad_stage_retire_step = any { step, all { not(s.prepared), s.abandonedAttempt != 0, s.abandonedAttempt == s.attempt, s.stageProtected, prepareRetire(true) }, all { not(s.prepared), s.abandonedAttempt != 0, s.abandonedAttempt == s.attempt, s.stageProtected, not(s.root), not(s.pinned), s.retireRevision == s.head, commitRetire(true) } }
-  action bad_refresh_step = any { step, refresh(true), all { s.preparedGeneration != s.generation, publish(false, false, false, false, false, false, false, false, false, false, false, true) } }
-  action bad_revision_step = any { step, publish(false, false, false, false, false, false, true, false, false, false, false, false) }
-  action bad_parent_step = any { step, publish(false, false, false, true, false, false, false, false, false, false, false, false) }
+  action bad_refresh_step = any { step, refresh(true), all { s.preparedGeneration != s.generation, publish(false, false, false, false, false, false, false, false, false, false, false, true, false) } }
+  action bad_revision_step = any { step, publish(false, false, false, false, false, false, true, false, false, false, false, false, false) }
+  action bad_parent_step = any { step, publish(false, false, false, true, false, false, false, false, false, false, false, false, false) }
   action bad_reply_step = any { step, reconcile(true) }
   action bad_pin_step = any { step, all { s.retired, commitPin(true) } }
   action bad_retire_step = any { step, all { s.pinned, commitRetire(true) } }
   // Retirement, staging and namespace fences must be bypassed together.
-  action bad_publish_retired_step = any { step, all { s.retired, s.stageDurable, not(s.stageProtected), publish(false, false, false, false, true, false, false, false, false, true, false, true) } }
-  action bad_retry2_step = any { step, all { s.op == 2, publish(false, false, true, false, false, false, false, false, false, false, false, false) } }
-  action bad_missing_outcome1_step = any { step, all { s.op == 1, publish(false, false, false, false, false, false, false, false, false, false, true, false) } }
-  action bad_missing_outcome2_step = any { step, all { s.op == 2, publish(false, false, false, false, false, false, false, false, false, false, true, false) } }
+  action bad_publish_retired_step = any { step, all { s.retired, s.stageDurable, not(s.stageProtected), publish(false, false, false, false, true, false, false, false, false, true, false, true, false) } }
+  action bad_retry2_step = any { step, all { s.op == 2, publish(false, false, true, false, false, false, false, false, false, false, false, false, false) } }
+  action bad_missing_outcome1_step = any { step, all { s.op == 1, publish(false, false, false, false, false, false, false, false, false, false, true, false, false) } }
+  action bad_missing_outcome2_step = any { step, all { s.op == 2, publish(false, false, false, false, false, false, false, false, false, false, true, false, false) } }
   action bad_corrupt_outcome1_step = any { step, all { s.done1, not(s.response1), s.outcome1 == s.committed1, s.head > s.outcome1, s' = s.with("outcome1", s.head) } }
   action bad_corrupt_outcome2_step = any { step, all { s.done2, not(s.response2), s.outcome2 == s.committed2, s.head > s.outcome2, s' = s.with("outcome2", s.head) } }
   action bad_reply2_step = any { step, reconcile2(true) }
@@ -271,7 +285,7 @@ module protocol {
 
   val publication = not(s.badNamespaceCommit) and not(s.badDataCommit) and not(s.badPlanCommit) and not(s.badSealCommit) and not(s.badPublication) and not(s.badParent) and
     s.visible1 == s.visible2 and (not(s.visible1) or s.publications > 0)
-  val fencing_and_outcomes = (not(s.namespaceOpen) or s.namespaceGeneration == s.generation) and not(s.stalePublished) and not(s.badFence) and s.effects1 <= 1 and s.effects2 <= 1 and
+  val fencing_and_outcomes = not(s.badPublisherCommit) and (not(s.namespaceOpen) or s.namespaceGeneration == s.generation) and not(s.stalePublished) and not(s.badFence) and s.effects1 <= 1 and s.effects2 <= 1 and
     (not(s.done1) or (s.committed1 > 0 and s.outcome1 == s.committed1)) and
     (not(s.done2) or (s.committed2 > 0 and s.outcome2 == s.committed2)) and
     (not(s.response1) or s.reply1 == s.outcome1) and (not(s.response2) or s.reply2 == s.outcome2)
