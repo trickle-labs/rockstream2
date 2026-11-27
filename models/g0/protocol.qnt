@@ -194,6 +194,13 @@ module protocol {
   // Both guards must be bypassed: a retired object cannot retain active staging protection.
   action bad_publish_retired_step = any { step, all { s.retired, s.stageDurable, not(s.stageProtected), publish(false, false, false, false, true, false, false, false, false, true) } }
   action bad_resurrection_step = any { step, reference(true) }
+  action bad_young_collect_step = any {
+    step,
+    all {
+      s.retired, not(s.pinned), not(s.root), not(s.deleted), s.age < 2,
+      s' = s.with("deleted", true)
+    }
+  }
 
   val publication = not(s.badDataCommit) and not(s.badPlanCommit) and not(s.badSealCommit) and not(s.badPublication) and not(s.badParent) and
     s.visible1 == s.visible2 and (not(s.visible1) or s.publications > 0)
