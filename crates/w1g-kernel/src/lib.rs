@@ -1,22 +1,35 @@
 //! Bounded, single-interval W1-G incremental kernel spike.
 use arrow_array::{Array, Decimal128Array, Int64Array, RecordBatch, StringArray};
 use arrow_buffer::{Buffer, OffsetBuffer};
-use arrow_schema::DataType;
+use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use std::borrow::Borrow;
 #[cfg(test)]
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 const MAX_ROWS: usize = 128;
 const MAX_REGION_BYTES: usize = 32;
 const MAX_INPUT_BYTES: usize = 16 * 1024;
 const MAX_OUTPUT_ROWS: usize = 2 * MAX_ROWS;
+const MAX_IN_FLIGHT_OUTPUTS: usize = 2;
 const OUTPUT_ROW_BYTES: usize = MAX_REGION_BYTES
     + std::mem::size_of::<i32>()
     + 2 * std::mem::size_of::<i64>()
     + std::mem::size_of::<i128>();
 const MAX_OUTPUT_SCRATCH_BYTES: usize =
     MAX_OUTPUT_ROWS * OUTPUT_ROW_BYTES + std::mem::size_of::<i32>();
+
+fn output_schema() -> &'static SchemaRef {
+    static SCHEMA: OnceLock<SchemaRef> = OnceLock::new();
+    SCHEMA.get_or_init(|| {
+        Arc::new(Schema::new(vec![
+            Field::new("region", DataType::Utf8, false),
+            Field::new("count", DataType::Int64, false),
+            Field::new("revenue", DataType::Decimal128(38, 2), false),
+            Field::new("weight", DataType::Int64, false),
+        ]))
+    })
+}
 
 fn reserve<T>(buffer: &mut Vec<T>, rows: usize) -> Result<(), &'static str> {
     buffer
@@ -136,12 +149,13 @@ struct Order {
     cents: i64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default)]
 pub struct Kernel {
     epoch: u64,
     customers: FixedMap<i64, Region>,
     orders: FixedMap<i64, Order>,
     groups: FixedMap<Region, (i64, i128)>,
+    outputs: [Option<[Option<Buffer>; 5]>; MAX_IN_FLIGHT_OUTPUTS],
 }
 
 fn integers(batch: &RecordBatch, column: usize) -> Result<&Int64Array, &'static str> {
@@ -153,12 +167,55 @@ fn integers(batch: &RecordBatch, column: usize) -> Result<&Int64Array, &'static 
 }
 
 impl Kernel {
+    fn fork_state(&self) -> Self {
+        Self {
+            epoch: self.epoch,
+            customers: self.customers.clone(),
+            orders: self.orders.clone(),
+            groups: self.groups.clone(),
+            outputs: Default::default(),
+        }
+    }
+
+    fn admit_output(&mut self) -> Result<usize, &'static str> {
+        let slot = self
+            .outputs
+            .iter()
+            .position(|entry| {
+                entry.as_ref().is_none_or(|buffers| {
+                    buffers
+                        .iter()
+                        .flatten()
+                        .all(|buffer| buffer.strong_count() == 1)
+                })
+            })
+            .ok_or("output backlog limit")?;
+        // Release the old backing allocations before reserving replacement output.
+        self.outputs[slot] = None;
+        Ok(slot)
+    }
+
     /// Ungrouped COUNT returns exactly one Arrow row even for empty input.
-    pub fn ungrouped_count(&self) -> Result<Int64Array, &'static str> {
+    pub fn ungrouped_count(&mut self) -> Result<Int64Array, &'static str> {
         let count = self.groups.values().try_fold(0_i64, |n, (count, _)| {
             n.checked_add(*count).ok_or("count overflow")
         })?;
-        Ok(Int64Array::from(vec![count]))
+        let slot = self.admit_output()?;
+        let mut values = Vec::new();
+        reserve(&mut values, 1)?;
+        if values
+            .capacity()
+            .checked_mul(std::mem::size_of::<i64>())
+            .ok_or("scratch size overflow")?
+            > MAX_OUTPUT_SCRATCH_BYTES
+        {
+            return Err("scratch limit");
+        }
+        values.push(count);
+        let buffer = Buffer::from_vec(values);
+        let output = Int64Array::new(buffer.clone().into(), None);
+        self.outputs[slot] = Some([Some(buffer), None, None, None, None]);
+        Ok(output)
     }
 
     pub fn result(&self) -> impl Iterator<Item = (&str, (i64, i128))> {
@@ -249,7 +306,9 @@ impl Kernel {
         if customers.schema().field(1).data_type() != &DataType::Utf8 {
             return Err("expected UTF8");
         }
-        // shortcut: Arrow output allocations remain unaccounted, use fallible construction before promotion.
+        // A retained buffer remains charged through all Arrow array and slice clones.
+        let output_slot = self.admit_output()?;
+        // shortcut: Arrow wrapper allocations remain unaccounted, reserve them before promotion.
         let possible_groups = self
             .customers
             .len()
@@ -307,7 +366,7 @@ impl Kernel {
             return Err("scratch limit");
         }
         offsets.push(0);
-        let mut next = self.clone();
+        let mut next = self.fork_state();
         for i in 0..customers.num_rows() {
             let id = ids.value(i);
             let region = input_regions.value(i);
@@ -408,24 +467,45 @@ impl Kernel {
                 weights.push(1);
             }
         }
+        let regions = Buffer::from_vec(regions);
+        let offsets = Buffer::from_vec(offsets);
+        let counts = Buffer::from_vec(counts);
+        let sums = Buffer::from_vec(sums);
+        let weights = Buffer::from_vec(weights);
+        let buffers = [regions, offsets, counts, sums, weights];
         let regions = StringArray::try_new(
-            OffsetBuffer::new(offsets.into()),
-            Buffer::from_vec(regions),
+            OffsetBuffer::new(buffers[1].clone().into()),
+            buffers[0].clone(),
             None,
         )
         .map_err(|_| "invalid string output")?;
-        let decimal = Decimal128Array::from(sums)
+        let decimal = Decimal128Array::new(buffers[3].clone().into(), None)
             .with_precision_and_scale(38, 2)
             .map_err(|_| "invalid decimal output")?;
-        let output = RecordBatch::try_from_iter(vec![
-            ("region", Arc::new(regions) as _),
-            ("count", Arc::new(Int64Array::from(counts)) as _),
-            ("revenue", Arc::new(decimal) as _),
-            ("weight", Arc::new(Int64Array::from(weights)) as _),
-        ])
+        let output = RecordBatch::try_new(
+            output_schema().clone(),
+            vec![
+                Arc::new(regions),
+                Arc::new(Int64Array::new(buffers[2].clone().into(), None)),
+                Arc::new(decimal),
+                Arc::new(Int64Array::new(buffers[4].clone().into(), None)),
+            ],
+        )
         .map_err(|_| "invalid output batch")?;
+        next.outputs = std::mem::take(&mut self.outputs);
+        next.outputs[output_slot] = Some(buffers.map(Some));
         *self = next;
         Ok(output)
+    }
+}
+
+#[cfg(test)]
+impl PartialEq for Kernel {
+    fn eq(&self, other: &Self) -> bool {
+        self.epoch == other.epoch
+            && self.customers == other.customers
+            && self.orders == other.orders
+            && self.groups == other.groups
     }
 }
 
@@ -592,7 +672,7 @@ mod tests {
     #[test]
     fn limits_and_bad_preimages_reject_the_whole_interval() {
         let mut kernel = Kernel::default();
-        let before = kernel.clone();
+        let before = kernel.fork_state();
         assert_eq!(
             kernel.apply(1, &customers(&[]), &orders(&[])),
             Err("unexpected epoch")
@@ -628,7 +708,7 @@ mod tests {
     #[test]
     fn invalid_inputs_and_late_order_failure_are_atomic() {
         let mut kernel = Kernel::default();
-        let before = kernel.clone();
+        let before = kernel.fork_state();
         let null_customer = RecordBatch::try_from_iter(vec![
             ("id", Arc::new(Int64Array::from(vec![None])) as _),
             ("region", Arc::new(StringArray::from(vec!["N"])) as _),
@@ -699,9 +779,68 @@ mod tests {
     }
 
     #[test]
+    fn retained_arrow_slices_hold_output_admission() {
+        let mut kernel = Kernel::default();
+        let empty_customers = customers(&[]);
+        let empty_orders = orders(&[]);
+        let first = kernel
+            .apply(0, &customers(&[(1, "N", 1)]), &orders(&[(2, 1, 100, 1)]))
+            .unwrap();
+        let retained = first.column(0).slice(0, 1);
+        drop(first);
+        let second = kernel.apply(1, &empty_customers, &empty_orders).unwrap();
+        let before = kernel.fork_state();
+        assert_eq!(
+            kernel.apply(2, &empty_customers, &empty_orders),
+            Err("output backlog limit")
+        );
+        assert_eq!(kernel, before);
+        drop(retained);
+        let third = kernel.apply(2, &empty_customers, &empty_orders).unwrap();
+        drop((second, third));
+        assert!(kernel.apply(3, &empty_customers, &empty_orders).is_ok());
+    }
+
+    #[test]
+    fn extracted_buffer_and_count_outputs_consume_slots() {
+        let mut kernel = Kernel::default();
+        let empty_customers = customers(&[]);
+        let empty_orders = orders(&[]);
+        let batch = kernel
+            .apply(0, &customers(&[(1, "N", 1)]), &orders(&[(2, 1, 100, 1)]))
+            .unwrap();
+        let extracted = batch.column(1).to_data().buffers()[0].slice_with_length(0, 0);
+        drop(batch);
+        let count = kernel.ungrouped_count().unwrap();
+        assert_eq!(count.values(), &[1]);
+        assert_eq!(
+            kernel.apply(1, &empty_customers, &empty_orders),
+            Err("output backlog limit")
+        );
+        drop(extracted);
+        let next = kernel.apply(1, &empty_customers, &empty_orders).unwrap();
+        drop(next);
+        drop(count);
+        assert!(kernel.apply(2, &empty_customers, &empty_orders).is_ok());
+    }
+
+    #[test]
+    fn forgotten_output_remains_charged() {
+        let mut kernel = Kernel::default();
+        let empty_customers = customers(&[]);
+        let empty_orders = orders(&[]);
+        std::mem::forget(kernel.apply(0, &empty_customers, &empty_orders).unwrap());
+        std::mem::forget(kernel.ungrouped_count().unwrap());
+        assert_eq!(
+            kernel.apply(1, &empty_customers, &empty_orders),
+            Err("output backlog limit")
+        );
+    }
+
+    #[test]
     fn output_scratch_limit_rejects_atomically_before_growth() {
         let mut kernel = Kernel::default();
-        let before = kernel.clone();
+        let before = kernel.fork_state();
         let input = customers(&[(1, "N", 1)]);
         let empty = orders(&[]);
         let one_row = OUTPUT_ROW_BYTES + std::mem::size_of::<i32>();
@@ -728,7 +867,7 @@ mod tests {
         let mut kernel = Kernel::default();
         let rows: Vec<_> = (0..MAX_ROWS).map(|id| (id as i64, "N", 1)).collect();
         kernel.apply(0, &customers(&rows), &orders(&[])).unwrap();
-        let before = kernel.clone();
+        let before = kernel.fork_state();
         assert_eq!(
             kernel.apply(1, &customers(&[(999, "N", 1)]), &orders(&[])),
             Err("state limit")
@@ -764,7 +903,7 @@ mod tests {
         assert_eq!(batch.num_rows(), 128);
         assert_eq!(kernel.result().count(), 64);
         assert!(kernel.result().all(|(_, row)| row == (1, 100)));
-        let before = kernel.clone();
+        let before = kernel.fork_state();
         assert_eq!(
             kernel.apply(2, &customers(&[(999, "N", 1)]), &orders(&[])),
             Err("state limit")

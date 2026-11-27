@@ -43,6 +43,28 @@ required for a feasibility decision. The prior small-fixture RSS observations do
 not qualify resource admission. Do not infer the predeclared fallback trigger solely from missing
 measurements.
 
+### Output lifetime admission
+
+Each kernel admits at most two outstanding outputs, including ungrouped-count
+arrays. It retains sentinel references to each output buffer and releases a slot
+only when every sentinel is its buffer's sole owner. Arrow array clones,
+extracted buffers, zero-length slices and deliberately forgotten outputs stay
+charged; when both slots are held, the next call returns `output backlog limit`
+without advancing the epoch. Reclaimed sentinels are dropped before allocating a
+replacement. Tests exercise rejection, state preservation and retry after the
+last slice is dropped. The fixed schema is shared across output batches instead
+of creating a fresh schema per epoch.
+
+The five tracked vector capacities of a single weighted delta are capped at
+17,412 bytes, so two retained delta outputs account for at most 34,824 bytes
+of vector capacities per live kernel. This is a per-kernel admission limit,
+not a process-wide pool: dropping a kernel while its caller retains output,
+creating additional kernels, consumer copies, shared input, allocator metadata
+and Arrow wrapper objects are outside it. The allocator may return a larger
+capacity than requested; it is checked after allocation and rejected if above
+the cap. This experiment does not reserve physical memory or qualify process
+headroom.
+
 ### Allocation-failure gap
 
 The input/state cardinality checks reject before retaining a 129th row, and
