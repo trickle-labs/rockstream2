@@ -68,6 +68,8 @@ process-wide pool: independently created budgets, consumer copies, shared input,
 allocator metadata, wrapper objects, physical allocation failure and process
 headroom remain outside it. Caller-provided custom Arrow buffers can also report
 less than their true backing capacity and require separate input attribution.
+A [local counterexample](../../evidence/g0-4/input-attribution.md) demonstrates
+this through the kernel's actual input admission path; it is not a feasibility pass.
 
 ### Allocation-failure gap
 
