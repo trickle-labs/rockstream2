@@ -7,6 +7,23 @@ use std::sync::Arc;
 const MAX_ROWS: usize = 128;
 const MAX_REGION_BYTES: usize = 32;
 const MAX_INPUT_BYTES: usize = 16 * 1024;
+const MAX_OUTPUT_ROWS: usize = 2 * MAX_ROWS;
+const MAX_OUTPUT_SCRATCH_BYTES: usize = MAX_OUTPUT_ROWS
+    * (std::mem::size_of::<&str>() + 2 * std::mem::size_of::<i64>() + std::mem::size_of::<i128>());
+
+fn reserve<T>(buffer: &mut Vec<T>, rows: usize) -> Result<(), &'static str> {
+    buffer
+        .try_reserve_exact(rows)
+        .map_err(|_| "allocation failed")
+}
+
+fn copy_region(region: &str) -> Result<String, &'static str> {
+    let mut copy = String::new();
+    copy.try_reserve_exact(region.len())
+        .map_err(|_| "allocation failed")?;
+    copy.push_str(region);
+    Ok(copy)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Order {
@@ -58,8 +75,10 @@ impl Kernel {
         }
         if count == 0 {
             self.groups.remove(region);
+        } else if let Some(group) = self.groups.get_mut(region) {
+            *group = (count, sum);
         } else {
-            self.groups.insert(region.to_owned(), (count, sum));
+            self.groups.insert(copy_region(region)?, (count, sum));
         }
         Ok(())
     }
@@ -71,6 +90,16 @@ impl Kernel {
         epoch: u64,
         customers: &RecordBatch,
         orders: &RecordBatch,
+    ) -> Result<RecordBatch, &'static str> {
+        self.apply_with_scratch_limit(epoch, customers, orders, MAX_OUTPUT_SCRATCH_BYTES)
+    }
+
+    fn apply_with_scratch_limit(
+        &mut self,
+        epoch: u64,
+        customers: &RecordBatch,
+        orders: &RecordBatch,
+        scratch_limit: usize,
     ) -> Result<RecordBatch, &'static str> {
         if epoch != self.epoch {
             return Err("unexpected epoch");
@@ -100,12 +129,12 @@ impl Kernel {
             return Err("null input");
         }
         let ids = integers(customers, 0)?;
-        let regions = customers
+        let input_regions = customers
             .column(1)
             .as_any()
             .downcast_ref::<StringArray>()
             .ok_or("expected UTF8")?;
-        let weights = integers(customers, 2)?;
+        let input_weights = integers(customers, 2)?;
         let order_ids = integers(orders, 0)?;
         let order_customers = integers(orders, 1)?;
         let cents = integers(orders, 2)?;
@@ -113,11 +142,68 @@ impl Kernel {
         if customers.schema().field(1).data_type() != &DataType::Utf8 {
             return Err("expected UTF8");
         }
+        // shortcut: map and Arrow allocations remain unaccounted, use a fallible pool before promotion.
+        let possible_groups = self
+            .customers
+            .len()
+            .checked_add(customers.num_rows())
+            .ok_or("output size overflow")?
+            .min(MAX_ROWS);
+        let output_rows = self
+            .groups
+            .len()
+            .checked_add(possible_groups)
+            .ok_or("output size overflow")?;
+        if output_rows > MAX_OUTPUT_ROWS {
+            return Err("output limit");
+        }
+        let bytes_per_row = std::mem::size_of::<&str>()
+            .checked_add(2 * std::mem::size_of::<i64>())
+            .and_then(|n| n.checked_add(std::mem::size_of::<i128>()))
+            .ok_or("scratch size overflow")?;
+        let requested = output_rows
+            .checked_mul(bytes_per_row)
+            .ok_or("scratch size overflow")?;
+        if requested > scratch_limit {
+            return Err("scratch limit");
+        }
+        let mut regions = Vec::<&str>::new();
+        let mut counts = Vec::<i64>::new();
+        let mut sums = Vec::<i128>::new();
+        let mut weights = Vec::<i64>::new();
+        reserve(&mut regions, output_rows)?;
+        reserve(&mut counts, output_rows)?;
+        reserve(&mut sums, output_rows)?;
+        reserve(&mut weights, output_rows)?;
+        let scratch_bytes = regions
+            .capacity()
+            .checked_mul(std::mem::size_of::<&str>())
+            .and_then(|v| {
+                counts
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<i64>())
+                    .and_then(|n| v.checked_add(n))
+            })
+            .and_then(|v| {
+                sums.capacity()
+                    .checked_mul(std::mem::size_of::<i128>())
+                    .and_then(|n| v.checked_add(n))
+            })
+            .and_then(|v| {
+                weights
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<i64>())
+                    .and_then(|n| v.checked_add(n))
+            })
+            .ok_or("scratch size overflow")?;
+        if scratch_bytes > scratch_limit {
+            return Err("scratch limit");
+        }
         let mut next = self.clone();
         for i in 0..customers.num_rows() {
             let id = ids.value(i);
-            let region = regions.value(i);
-            let weight = weights.value(i);
+            let region = input_regions.value(i);
+            let weight = input_weights.value(i);
             if region.len() > MAX_REGION_BYTES {
                 return Err("region limit");
             }
@@ -126,20 +212,23 @@ impl Kernel {
                     if next.customers.len() + next.orders.len() >= MAX_ROWS {
                         return Err("state limit");
                     }
-                    next.customers.insert(id, region.to_owned());
+                    next.customers.insert(id, copy_region(region)?);
                 }
                 -1 if next.customers.get(&id).is_some_and(|r| r == region) => {
                     next.customers.remove(&id);
                 }
                 _ => return Err("invalid customer delta"),
             }
-            let matching: Vec<i64> = next
-                .orders
-                .values()
-                .filter(|o| o.customer == id)
-                .map(|o| o.cents)
-                .collect();
-            for amount in matching {
+            let mut matching = [0_i64; MAX_ROWS];
+            let mut matching_count = 0;
+            for order in next.orders.values().filter(|o| o.customer == id) {
+                if matching_count == matching.len() {
+                    return Err("state limit");
+                }
+                matching[matching_count] = order.cents;
+                matching_count += 1;
+            }
+            for &amount in &matching[..matching_count] {
                 next.adjust(region, amount, weight)?;
             }
             if next
@@ -174,7 +263,8 @@ impl Kernel {
                 }
                 _ => return Err("invalid order delta"),
             }
-            if let Some(region) = next.customers.get(&order.customer).cloned() {
+            if let Some(region) = next.customers.get(&order.customer) {
+                let region = copy_region(region)?;
                 next.adjust(&region, order.cents, weight)?;
             }
             if next
@@ -188,10 +278,6 @@ impl Kernel {
             }
         }
         next.epoch = next.epoch.checked_add(1).ok_or("epoch overflow")?;
-        let mut regions = Vec::new();
-        let mut counts = Vec::new();
-        let mut sums = Vec::new();
-        let mut weights = Vec::new();
         for (region, old) in &self.groups {
             if next.groups.get(region) != Some(old) {
                 regions.push(region.as_str());
@@ -449,6 +535,33 @@ mod tests {
             Err("invalid order delta")
         );
         assert_eq!(kernel, before);
+    }
+
+    #[test]
+    fn output_scratch_limit_rejects_atomically_before_growth() {
+        let mut kernel = Kernel::default();
+        let before = kernel.clone();
+        let input = customers(&[(1, "N", 1)]);
+        let empty = orders(&[]);
+        let one_row = std::mem::size_of::<&str>()
+            + 2 * std::mem::size_of::<i64>()
+            + std::mem::size_of::<i128>();
+        assert_eq!(
+            kernel.apply_with_scratch_limit(0, &input, &empty, one_row - 1),
+            Err("scratch limit")
+        );
+        assert_eq!(kernel, before);
+        kernel
+            .apply_with_scratch_limit(0, &input, &empty, one_row)
+            .unwrap();
+    }
+
+    #[test]
+    fn output_scratch_reservation_failure_is_reported() {
+        let mut rows = Vec::<i64>::new();
+        assert_eq!(reserve(&mut rows, usize::MAX), Err("allocation failed"));
+        assert!(rows.is_empty());
+        assert_eq!(rows.capacity(), 0);
     }
 
     #[test]
