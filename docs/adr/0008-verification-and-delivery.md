@@ -18,6 +18,7 @@ Build Rockstream 2 incrementally along one executable vertical path (`W1-G`) thr
 - **Pretending deterministic simulation covers Tokio/SlateDB/object-store internals:** Rejected; focuses deterministic replay where it works (pure state machines) and relies on real-process kill/restart tests for storage and network boundaries.
 - **Trade-off accepted:** Specialized tools (e.g., Verus proofs, targeted fuzzers, mutation campaigns) are added only when a concrete verification gap warrants their maintenance cost, rather than mandated from day one.
 - **Milestone review trade-off (2026-11-27):** Independently reviewed changes can reach `main` before human review. The complete milestone receives one human review of the integrated candidate; findings may require repair or revert. Required checks and separate release authorization remain in force.
+- **G0 integration procedure (2026-11-28):** The owner directs that G0 proceed without requiring protected `main` or enforced checks. Independently review each exact candidate and observe applicable CI on its actual integration revision before merging, following the [workflow](../design/development-workflow.md#3-risk-based-required-checks). This is not GitHub enforcement and does not waive any existing enforced rule. Before G1 or later integration, resolve enforcement under that workflow. The milestone review and separate release authorization remain required.
 
 ## Evidence
 
