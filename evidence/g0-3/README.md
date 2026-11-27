@@ -1,5 +1,27 @@
 # G0.3 bounded model runs
 
+## Minimum-age control
+
+On 2026-11-27, the model with SHA-256
+`14a938189a332147d6bbb91783f6727db465b325b4a8c6572b3a2d1bc5a5a3c1`
+and check script with SHA-256
+`45df9eb432d3a9eb07bcb4ca1b5b0fb09255f9c7a058e57f624052f2e225899b`
+passed the eleven-step symbolic invariant check, 26 witnesses and 26
+negative controls. The new witness reaches an unpinned, retired object younger
+than the minimum; the new mutant bypasses only the age guard and produces a GC
+counterexample. These observations do not change the inconclusive G0.3 verdict.
+
+The [raw run](age-guard-raw-run.tar.gz), SHA-256
+`30b9a25fd2d3d078b9757a4c14cc648834fec773e54c08324d067c7a2edff696`,
+contains per-invocation arguments, output, statuses and traces, source hashes,
+environment, a PostgreSQL-backed fast-gate log, and the separately rerun TLC
+count. All 54 invocation statuses, 26 control counterexamples and 52 traces
+were checked. The separate depth-3 TLC run found 11,746 depth-tagged
+configurations, with 40,375 generated and none queued; this count does not
+describe the eleven-step symbolic check. The run used Quint 0.34.0, Apalache
+0.62.4, Node 26.13.1 and OpenJDK 21.0.13.1 on Darwin arm64. The fast gate
+was run before integration with later main revisions.
+
 ## Comment-updated model run: e5aea35
 
 On 2026-11-27 the model with SHA-256

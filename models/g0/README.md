@@ -42,7 +42,9 @@ commits it by bypassing the seal comparison. The remaining mutants cover partial
 visibility, stale CAS or parent, unsafe ownership refresh, repeated effects,
 incorrect reconciliation, a stale plan after CAS refresh, nondurable or
 unprotected publication, a foreign-object receipt, protected-stage retirement,
-pin/retire races and resurrection. The retired-publication mutant bypasses both
+pin/retire races, resurrection, and collection before the minimum age. A separate
+witness reaches a retired, unpinned object younger than the minimum; the
+young-collection mutant bypasses only that age guard. The retired-publication mutant bypasses both
 retirement and staging-protection guards: normal protected staging prevents the
 retired state from being reached, so this is a compound-fault control. Each
 mutant must produce a counterexample.
