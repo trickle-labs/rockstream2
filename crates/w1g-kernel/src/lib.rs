@@ -209,7 +209,12 @@ impl OutputOwner {
     }
 }
 
-#[derive(Debug, Default)]
+/// A kernel must receive the output budget shared by its runtime.
+///
+/// ```compile_fail
+/// let _ = w1g_kernel::Kernel::default();
+/// ```
+#[derive(Debug)]
 pub struct Kernel {
     epoch: u64,
     customers: FixedMap<i64, Region>,
@@ -572,6 +577,10 @@ impl PartialEq for Kernel {
 mod tests {
     use super::*;
 
+    fn kernel() -> Kernel {
+        Kernel::with_budget(Arc::new(OutputBudget::default()))
+    }
+
     fn snapshot(kernel: &Kernel) -> BTreeMap<String, (i64, i128)> {
         kernel
             .result()
@@ -620,7 +629,7 @@ mod tests {
 
     #[test]
     fn frozen_w1g_all_cuts() {
-        let mut kernel = Kernel::default();
+        let mut kernel = kernel();
         assert_eq!(kernel.result().count(), 0);
         assert_eq!(
             kernel.ungrouped_count().unwrap().values(),
@@ -730,7 +739,7 @@ mod tests {
 
     #[test]
     fn limits_and_bad_preimages_reject_the_whole_interval() {
-        let mut kernel = Kernel::default();
+        let mut kernel = kernel();
         let before = kernel.fork_state();
         assert_eq!(
             kernel.apply(1, &customers(&[]), &orders(&[])),
@@ -766,7 +775,7 @@ mod tests {
     }
     #[test]
     fn invalid_inputs_and_late_order_failure_are_atomic() {
-        let mut kernel = Kernel::default();
+        let mut kernel = kernel();
         let before = kernel.fork_state();
         let null_customer = RecordBatch::try_from_iter(vec![
             ("id", Arc::new(Int64Array::from(vec![None])) as _),
@@ -825,7 +834,7 @@ mod tests {
 
     #[test]
     fn arrow_output_preserves_multibyte_and_embedded_null() {
-        let mut kernel = Kernel::default();
+        let mut kernel = kernel();
         let output = kernel
             .apply(0, &customers(&[(1, "é\0x", 1)]), &orders(&[(2, 1, 100, 1)]))
             .unwrap();
@@ -839,7 +848,7 @@ mod tests {
 
     #[test]
     fn retained_arrow_slices_hold_output_admission() {
-        let mut kernel = Kernel::default();
+        let mut kernel = kernel();
         let empty_customers = customers(&[]);
         let empty_orders = orders(&[]);
         let first = kernel
@@ -862,7 +871,7 @@ mod tests {
 
     #[test]
     fn extracted_buffer_and_count_outputs_consume_slots() {
-        let mut kernel = Kernel::default();
+        let mut kernel = kernel();
         let empty_customers = customers(&[]);
         let empty_orders = orders(&[]);
         let batch = kernel
@@ -885,7 +894,7 @@ mod tests {
 
     #[test]
     fn forgotten_output_remains_charged() {
-        let mut kernel = Kernel::default();
+        let mut kernel = kernel();
         let empty_customers = customers(&[]);
         let empty_orders = orders(&[]);
         std::mem::forget(kernel.apply(0, &empty_customers, &empty_orders).unwrap());
@@ -919,6 +928,19 @@ mod tests {
         drop(retained);
         let retry = second.apply(1, &empty_customers, &empty_orders).unwrap();
         drop((other, retry));
+    }
+
+    #[test]
+    fn live_kernels_compete_for_their_shared_output_budget() {
+        let budget = Arc::new(OutputBudget::default());
+        let mut first = Kernel::with_budget(budget.clone());
+        let mut second = Kernel::with_budget(budget);
+        let first_output = first.ungrouped_count().unwrap();
+        let second_output = second.ungrouped_count().unwrap();
+        assert_eq!(first.ungrouped_count(), Err("output backlog limit"));
+        drop(second_output);
+        assert!(first.ungrouped_count().is_ok());
+        drop(first_output);
     }
 
     #[test]
@@ -993,7 +1015,7 @@ mod tests {
 
     #[test]
     fn output_scratch_limit_rejects_atomically_before_growth() {
-        let mut kernel = Kernel::default();
+        let mut kernel = kernel();
         let before = kernel.fork_state();
         let input = customers(&[(1, "N", 1)]);
         let empty = orders(&[]);
@@ -1018,7 +1040,7 @@ mod tests {
 
     #[test]
     fn state_and_region_limits_leave_state_unchanged() {
-        let mut kernel = Kernel::default();
+        let mut kernel = kernel();
         let rows: Vec<_> = (0..MAX_ROWS).map(|id| (id as i64, "N", 1)).collect();
         kernel.apply(0, &customers(&rows), &orders(&[])).unwrap();
         let before = kernel.fork_state();
@@ -1036,7 +1058,7 @@ mod tests {
     }
     #[test]
     fn configured_boundary_workload() {
-        let mut kernel = Kernel::default();
+        let mut kernel = kernel();
         let old: Vec<_> = (0..64).map(|i| format!("old-{i:028}")).collect();
         let new: Vec<_> = (0..64).map(|i| format!("new-{i:028}")).collect();
         let initial: Vec<_> = old

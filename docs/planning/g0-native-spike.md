@@ -46,7 +46,8 @@ measurements.
 ### Output lifetime admission experiment
 
 A shared output budget admits at most two outstanding outputs across kernels
-that explicitly receive that same budget. Each output is charged one slot
+that explicitly receive that same budget. Kernel construction requires a budget;
+the caller must pass the same budget to every kernel in the intended pool. Each output is charged one slot
 before allocation, and its immutable vector owner holds the budget ticket.
 The owner is attached to all five Arrow buffers through Arrow's unsafe custom
 allocation API. Arrow slices, clones and extracted buffers therefore keep the

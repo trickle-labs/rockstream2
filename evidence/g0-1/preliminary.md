@@ -1,10 +1,40 @@
 # G0.1 preliminary evidence
 
 **Verdict: inconclusive.** The implementation and bounded checks below are
-reviewable, but validation on the eventual integration revision and the
-human review of the completed milestone are still pending. This record does not
+reviewable. The integration observations below do not establish a reliable
+queue-inclusive CI duration under five minutes, and the human review of the
+completed milestone is still pending. This record does not
 unlock G1, mark G0 complete, or change branch protection. Apply the acceptance criteria in
 [qualification](../../docs/planning/qualification.md#g0-feasibility-decisions).
+
+## Main integration observations
+
+The push-triggered [fast check 45962067099](https://github.com/trickle-labs/rockstream2/actions/runs/45962067099)
+passed on the actual G0.1 merge commit `43b084989c166620d1f518ef7ea7c8fbc6c50406`.
+It completed 4 minutes 2 seconds after run creation, including queueing.
+
+After the G0.4 and G0.3 preparatory merges, the push-triggered
+[fast check 45972526560](https://github.com/trickle-labs/rockstream2/actions/runs/45972526560)
+passed on actual main commit `54cc84947726e39bedaa0ea2af5a4a24c12222a5`.
+The [fast job](https://github.com/trickle-labs/rockstream2/actions/runs/45972526560/job/140416168633)
+ran the pinned toolchain and `scripts/check-fast.sh` against PostgreSQL 17.6.
+It reported 17 kernel tests, one oracle test and nine Python tests passing,
+the dependency and cross-term negative controls detected, and all frozen
+PostgreSQL W1-G cuts matching. The job began at 09:25:54 UTC and finished at
+09:27:02 UTC on 2026-11-27: 1 minute 8 seconds running and 9 minutes 10 seconds
+from run creation at 09:17:52, including an 8-minute 2-second queue. This run
+exceeded the queue-inclusive five-minute objective; two observations do not
+establish a timing distribution or reliable attainment of that objective.
+
+The job's `Run fast checks` step is retained as
+[ci-run-45972526560-fast.log.gz](ci-run-45972526560-fast.log.gz), excluding
+lines containing password, token, secret, authorization or credential labels.
+It is a redacted step extract, not the full job log. Its compressed SHA-256 is
+`47b978fd8dce4ee42bd18a6506fddefb854e22bf3c70908d441215344c96fa32`;
+the extracted bytes have SHA-256
+`0a4fd1f40615eed92ddb70d2568ef9dd8f669a9bcce02a3721b2d84a5de8aaba`.
+This evidence records that specific integration revision, not this subsequent
+evidence-only change or any later revision.
 
 ## Source and CI identity
 
