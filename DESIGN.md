@@ -36,7 +36,7 @@ Reader-lease, grace-window GC under live readers, separate-process reader, cross
 
 Correctness, simplicity, runtime performance, testability, maintainability, and step-by-step delivery are first-class concerns. Prefer the simplest contract-satisfying design; every abstraction, dependency, or alternate path must earn its verification cost. [RockStyle](ROCK_STYLE.md) turns these principles into executable rules: distinct domain types, checked arithmetic, release-enabled checks on internal invariants, explicit resource contracts, and a small verification stack (Rust/Clippy, Quint, `proptest`, independent PostgreSQL/batch oracles, deterministic state-machine replay for pure Rockstream transitions, and real-process/real-backend crash tests). See [testing and verification](docs/design/testing-and-verification.md) and [development workflow](docs/design/development-workflow.md).
 
-Autonomous coding agents are the primary implementation workforce, operating under lightweight GitHub issue/PR workflows and [risk-based governance](docs/design/agent-development.md): routine contract-bounded implementation advances autonomously via independent oracles, automated checks, and separate-context review, while human maintainers own architecture, invariant/security changes, and release authorization.
+Autonomous coding agents are the primary implementation workforce, operating under lightweight GitHub issue/PR workflows and [risk-based governance](docs/design/agent-development.md): milestone changes integrate autonomously through independent oracles, automated checks, and separate-context review. The human maintainer reviews the completed milestone and retains release authorization.
 
 ## 2. Product boundary
 

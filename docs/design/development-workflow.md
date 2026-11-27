@@ -49,7 +49,7 @@ Maintain a versioned contract-to-test and dependency-to-suite mapping, with tran
 
 For high-risk changes require all evidence necessary for the changed safety contract before merge, even if that exceeds the ordinary budget. Split a risky implementation into inert preparatory work and separately verified activation where possible. A feature flag cannot conceal risk to existing supported behavior or durable state.
 
-Risk-based merge authority follows the [agent operating model](agent-development.md): low and medium risk can be eligible for policy-controlled auto-merge; medium requires independent review; high risk and architectural/policy changes require human authorization and appropriate independent review. A documentation or test-only change can still be high risk. Policy, selector, workflow, checker and permission changes cannot approve or authorize themselves.
+Risk-based integration follows the [agent operating model](agent-development.md): agents integrate authorized milestone work after required CI and independent review, including safety review for high-risk changes. The human reviews the completed milestone; release authorization is separate. A documentation or test-only change can still be high risk. Policy, selector, workflow, checker and permission changes cannot approve or authorize themselves, and enforced branch rules are never bypassed.
 
 ## 4. CI implementation
 

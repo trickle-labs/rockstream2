@@ -1,9 +1,9 @@
 # G0.1 preliminary evidence
 
 **Verdict: inconclusive.** The implementation and bounded checks below are
-reviewable, but independent human approval and validation on the eventual
-integration revision are still pending. This record does not unlock G1, mark
-G0 complete, or change branch protection. Apply the acceptance criteria in
+reviewable, but validation on the eventual integration revision and the
+human review of the completed milestone are still pending. This record does not
+unlock G1, mark G0 complete, or change branch protection. Apply the acceptance criteria in
 [qualification](../../docs/planning/qualification.md#g0-feasibility-decisions).
 
 ## Source and CI identity
@@ -58,5 +58,6 @@ imported or executed for this record. Review dependency closure and notices
 before accepting any later port. Changes adding this record and the observation
 in ADR 0011 are evidence-only relative to `c258891`; re-run CI on the resulting
 PR head and again on the actual integration revision. A green earlier commit or
-synthetic merge cannot qualify a later source revision. Human maintainer review,
-required-check configuration and branch protection remain separate actions.
+synthetic merge cannot qualify a later source revision. Human review of the
+completed milestone, required-check configuration and branch protection remain
+separate actions.
