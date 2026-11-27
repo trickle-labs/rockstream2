@@ -69,6 +69,33 @@ class OptimizedChecks(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertIn('invalid expected region', result.stderr)
 
+    def test_postgres_rejects_unchecked_epochs_and_cuts(self):
+        # An accepting psql stub proves validation, rather than connection failure,
+        # rejects rows outside the frozen workload before database execution.
+        binary = self.root / 'bin'
+        binary.mkdir()
+        psql = binary / 'psql'
+        psql.write_text('#!/bin/sh\nexit 0\n')
+        psql.chmod(0o755)
+        env = dict(os.environ, PYTHONOPTIMIZE='1', PATH=str(binary) + os.pathsep + os.environ.get('PATH', ''))
+        for name, row, error in (
+            ('transactions.csv', '-1,order,1,105,1,1\n', 'invalid fixture epoch'),
+            ('transactions.csv', '4,order,1,105,1,1\n', 'invalid fixture epoch'),
+            ('expected.csv', '-1,North,1,1\n', 'invalid expected cut'),
+            ('expected.csv', '5,North,1,1\n', 'invalid expected cut'),
+        ):
+            with self.subTest(row=row):
+                path = self.root / 'fixtures' / 'w1g' / name
+                original = path.read_text()
+                path.write_text(original + row)
+                try:
+                    result = subprocess.run([sys.executable, self.root / 'scripts' / 'check-postgres.py'],
+                                            text=True, capture_output=True, env=env, check=False)
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    self.assertIn(error, result.stderr)
+                finally:
+                    path.write_text(original)
+
 
 if __name__ == '__main__':
     unittest.main()

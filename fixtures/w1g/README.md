@@ -15,3 +15,6 @@ PostgreSQL independently evaluates the SQL against the same inputs and frozen
 expected rows. Neither implements the incremental kernel. The cross-term
 negative control runs a deliberately incomplete incremental join and verifies
 that it differs from batch evaluation at cut 2.
+
+The PostgreSQL oracle rejects transaction epochs outside 0–3 and expected cuts
+outside 0–4 before executing SQL, so no fixture row is silently omitted.
