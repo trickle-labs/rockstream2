@@ -21,7 +21,7 @@ The mechanism choices in this record remain in force, but their adoption gates a
 | Hibernation | Full zero-process sleep constrained online low-latency/CDC profiles that cannot hibernate anyway | Stateless compute scales to zero on all profiles; full zero-process hibernation is an Object-Native capability for eligible workloads |
 | Runtime selection | Mandatory upfront double-build of native AND Timely/Differential before G1 | Build and validate the lean acyclic scalar-epoch native kernel in G0.4 (with Rockstream-owned checked widened numeric accumulators); only prototype Timely/Differential if native hits a concrete predeclared wall |
 | Gate sequencing & optimizer | Overloaded G3 with premature 9-term monetary cost advisor while `LEFT JOIN`/`DISTINCT` waited for G5; delete-safe `MIN`/`MAX` bloated G2 | Move `MIN`/`MAX` out of G2; split G3 into **G3a** (table-stakes SQL: `LEFT JOIN`, `DISTINCT`, semi/anti joins, `MIN`/`MAX` + live PG CDC with additive-DDL tolerance, Kafka, subscriptions) and **G3b** (shared engine, MVCC, rule-based isolation, eligible F-IVM); defer monetary cost advisor to G5 |
-| Verification & review | Contradictory Quint vs. FizzBee tooling; pretending a simulator covers Tokio/SlateDB/S3; auto-merging unbridged `rock-meta`/`rock-state` internals | Standardize on **Quint** + `proptest` + independent PostgreSQL/batch oracle + pure state-machine replay + **real-process/real-backend crash tests**; keep pure SQL/operator PRs at Medium risk and keep core protocol/recovery (`rock-meta`, `rock-state`) at High risk requiring human approval |
+| Verification & review | Contradictory Quint vs. FizzBee tooling; pretending a simulator covers Tokio/SlateDB/S3; auto-merging unbridged `rock-meta`/`rock-state` internals | Standardize on **Quint** + `proptest` + independent PostgreSQL/batch oracle + pure state-machine replay + **real-process/real-backend crash tests**; keep core protocol/recovery (`rock-meta`, `rock-state`) at High risk with independent agent safety review and required evidence before integration, followed by human milestone review |
 | G0 scope | 10 heavy work packages + 1,000-view benchmarks + full hibernation + joint harness before G1 | Cut G0 to **4 focused kill-switch deliverables (G0.1–G0.4)** in two tracks; the timebox bounds scope, not delivery. The foundation track unlocks G1, durability physics unlocks G2; move reader-lease probes to G4.0, sharing benchmarks to G3b, single-process hibernation to G2, fleet-wide drain and activation to G4, and heavy governance to actual need |
 
 ## Consequences
@@ -29,3 +29,14 @@ The mechanism choices in this record remain in force, but their adoption gates a
 - G0 comprises two timeboxed tracks: foundation unlocks G1, and durability physics unlocks G2 in parallel with G1.
 - Every architectural invariant (`INV-01`–`INV-10`) remains intact; none of these simplifications weakens exact SQL semantics, atomic publication, ownership fencing, or GC safety.
 - Unproven claims remain unmeasured until the relevant G0/G4.0 and later gates produce real artifacts. If G0.2 finds conditional writes unavailable or SlateDB index maintenance misses its profile budget, reject the provider/profile or change the layout before full-engine investment; consider OpenRaft only through the evidence gate.
+
+## G0.1 observation (inconclusive)
+
+The initial workspace, frozen W1-G fixture, independent batch and PostgreSQL
+checks, negative controls, and seeded donor register are available for review.
+The bounded observations and exact source identities are recorded in
+[preliminary G0.1 evidence](../../evidence/g0-1/preliminary.md). They do not
+approve the implementation, qualify the integration revision, or unlock G1;
+integration checks and G0.4 remain required, and the human reviews the
+completed milestone. This observation does not change the decisions or
+invariants in this ADR.

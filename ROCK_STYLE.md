@@ -39,7 +39,7 @@ Inspired by [TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/do
 
 - Reuse a versioned workload and replay format across generated tests, state-machine tests, regressions, and real deployments where practical. Share production transitions, not oracle logic. Preserve independent expectations and minimized counterexamples.
 - Add specialized proof (e.g., Verus), fuzzing, or mutation tools only when a concrete verification gap justifies their maintenance cost. Never let verification tooling outgrow the production code it protects.
-- Keep the development control plane lightweight: scoped implementation, automated oracle/CI checks, independent review where warranted, and human authority for architectural, invariant, security, and release decisions ([agent operating model](docs/design/agent-development.md)). Use standard GitHub issues, PRs, and Actions—no bespoke multi-agent orchestration platform.
+- Keep the development control plane lightweight: scoped implementation, automated oracle/CI checks, independent agent review, and human review of the completed milestone and release decisions ([agent operating model](docs/design/agent-development.md)). Use standard GitHub issues, PRs, and Actions—no bespoke multi-agent orchestration platform.
 
 | Rule | Initial enforcement/evidence | Owner gate |
 | --- | --- | --- |

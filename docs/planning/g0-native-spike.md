@@ -1,8 +1,9 @@
 # G0.4 native kernel spike: preliminary evidence
 
 **Verdict: inconclusive.** This is a draft experiment, not a foundation-gate
-pass, an ADR decision or a supported runtime. It is based on an unmerged G0.1
-candidate and must be rebased and retested after G0.1 merges.
+pass, an ADR decision or a supported runtime. G0.1 has merged into main at
+`43b084989c166620d1f518ef7ea7c8fbc6c50406`; this candidate integrates that
+revision and must be checked again against the actual integration revision.
 
 The prototype applies customer deltas against the old order state, followed by
 order deltas against the updated customer state. The latter includes the
@@ -31,9 +32,9 @@ oracle. The separate G0.1 PostgreSQL replay checks the same fixture. Local
 fast checks passed against a disposable PostgreSQL instance; exact candidate,
 commands and observations are in the PR. This evidence does not establish
 performance, general SQL, durable state, cloud operation, or proof that all
-resource exhaustion is safe. An independent review, resident-memory evidence,
-retest against merged G0.1 and an ADR update remain required for a feasibility
-decision. Do not infer the predeclared fallback trigger solely from missing
+resource exhaustion is safe. Independent review, a qualified resource contract and an ADR update remain
+required for a feasibility decision. The prior small-fixture RSS observations do
+not qualify resource admission. Do not infer the predeclared fallback trigger solely from missing
 measurements.
 
 ### Allocation-failure gap
@@ -52,3 +53,8 @@ otherwise. `Arc` and `RecordBatch` construction also allocate. A fallible
 construction strategy or a separately qualified isolation/allocator mechanism
 is needed before treating memory exhaustion as a controlled error; neither is
 implemented by this spike.
+
+Pinned `arrow-buffer` 59.3.2 also exposes an optional `MemoryPool`, but its
+`reserve` operation is explicitly infallible and the pool can be overfilled;
+it is accounting, not a fallible hard reservation. Enabling it alone therefore
+cannot meet the exhaustion contract.
