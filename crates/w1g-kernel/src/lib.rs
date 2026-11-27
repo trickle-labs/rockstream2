@@ -157,12 +157,21 @@ pub struct OutputBudget(AtomicUsize);
 
 impl OutputBudget {
     fn reserve(self: &Arc<Self>) -> Result<Ticket, &'static str> {
-        self.0
-            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                (current < MAX_IN_FLIGHT_OUTPUTS).then_some(current + 1)
-            })
-            .map_err(|_| "output backlog limit")?;
-        Ok(Ticket(self.clone()))
+        self.reserve_at(self.0.load(Ordering::Acquire))
+    }
+
+    fn reserve_at(self: &Arc<Self>, observed: usize) -> Result<Ticket, &'static str> {
+        if observed >= MAX_IN_FLIGHT_OUTPUTS {
+            return Err("output backlog limit");
+        }
+        match self
+            .0
+            .compare_exchange(observed, observed + 1, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => Ok(Ticket(self.clone())),
+            Err(current) if current >= MAX_IN_FLIGHT_OUTPUTS => Err("output backlog limit"),
+            Err(_) => Err("output contention limit"),
+        }
     }
 }
 
@@ -994,8 +1003,21 @@ mod tests {
             .map(|h| h.join().unwrap())
             .filter(|ok| *ok)
             .count();
-        assert_eq!(admitted, MAX_IN_FLIGHT_OUTPUTS);
+        assert!((1..=MAX_IN_FLIGHT_OUTPUTS).contains(&admitted));
         assert_eq!(budget.0.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn stale_reservation_observation_returns_contention_without_leaking() {
+        let budget = Arc::new(OutputBudget::default());
+        let first = budget.reserve().unwrap();
+        assert_eq!(budget.reserve_at(0).unwrap_err(), "output contention limit");
+        let second = budget.reserve().unwrap();
+        assert_eq!(budget.reserve_at(0).unwrap_err(), "output backlog limit");
+        assert_eq!(budget.0.load(Ordering::Acquire), MAX_IN_FLIGHT_OUTPUTS);
+        drop((first, second));
+        assert_eq!(budget.0.load(Ordering::Acquire), 0);
+        assert!(budget.reserve().is_ok());
     }
 
     #[test]

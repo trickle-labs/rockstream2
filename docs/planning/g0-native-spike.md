@@ -82,6 +82,10 @@ complete state and ungrouped count against an independent batch result.
 Exhausted logical state, scratch and output admission return an
 error without committing the tentative epoch; retained output buffers remain
 charged until their final reference is dropped, as tested below.
+Output admission uses one strong compare-and-exchange attempt: an observed
+full budget returns `output backlog limit`, while a conflicting update with
+capacity still observed returns `output contention limit`. A caller may retry
+in a separate bounded episode; persistent contention has no progress guarantee.
 
 These statements describe the logical boundary only. The kernel does not
 enforce a process-wide input-ownership policy, and the output budget is shared
