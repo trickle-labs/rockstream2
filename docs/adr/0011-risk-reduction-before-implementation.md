@@ -30,6 +30,25 @@ The mechanism choices in this record remain in force, but their adoption gates a
 - Every architectural invariant (`INV-01`–`INV-10`) remains intact; none of these simplifications weakens exact SQL semantics, atomic publication, ownership fencing, or GC safety.
 - Unproven claims remain unmeasured until the relevant G0/G4.0 and later gates produce real artifacts. If G0.2 finds conditional writes unavailable or SlateDB index maintenance misses its profile budget, reject the provider/profile or change the layout before full-engine investment; consider OpenRaft only through the evidence gate.
 
+## G0.3 bounded observation (draft)
+
+The Quint model at source commit `f4424cffbc53d0a9513f5b6720b184d51b1ee541`
+was checked through ten steps with recorded witnesses and negative
+controls. The [captured run](../../evidence/g0-3/README.md) identifies the
+model and tool versions and retains raw output and traces. This is bounded
+model evidence, not a proof of the implementation or a G0.3 gate decision.
+The model's documented abstractions, independent safety review, current
+integration-candidate checks and human milestone review remain required; no
+storage or runtime choice is changed by this observation.
+
+The later G0.3 source commit `9bd35ec0b6cb280b96eea20cdb1eb2c70081224c`
+adds an abstract staged-data and recovery-closure durability fact, receipt
+object identities and staging protection that survives abandonment until close.
+Its [recorded bounded run](../../evidence/g0-3/README.md#staged-durability-model-9bd35ec)
+completed with the stated witnesses and controls. The model still abstracts the
+object graph, namespace acquisition, data bytes and durable storage protocol;
+this observation does not qualify an implementation or approve the G0.3 gate.
+
 ## G0.1 observation (inconclusive)
 
 The initial workspace, frozen W1-G fixture, independent batch and PostgreSQL
