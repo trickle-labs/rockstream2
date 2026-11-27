@@ -89,6 +89,17 @@ only by kernels given the same budget. A new independently reviewed feasibility
 verdict remains necessary; neither this envelope nor the new test qualifies
 allocator failure, shared physical bytes or process headroom.
 
+On integration source `85ac0be2aaaa89fcc9fea5cad044676d3ce78994`, the
+PostgreSQL-backed fast gate passed with a fresh target and `PYTHONOPTIMIZE=1`;
+the kernel's 19 release tests and compile-fail doctest also passed. An isolated
+mutation replacing the customer-side join adjustment with a no-op failed the
+new fanout test: it emitted zero rows instead of the two required weighted
+rows. [Raw commands and results](../../evidence/g0-4/logical-feasibility-85ac0be.tar.gz)
+have SHA-256 `7e888d47ecf8c4298b488570df053595717d5967940a5c6c37c6b173dbfe3050`.
+The archive and this evidence paragraph were added after that tested source;
+they do not modify the kernel. They do not replace checks of the final
+integration revision.
+
 ### Output lifetime admission experiment
 
 A shared output budget admits at most two outstanding outputs across kernels
