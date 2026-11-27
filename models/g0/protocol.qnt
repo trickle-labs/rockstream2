@@ -201,9 +201,16 @@ module protocol {
       s' = s.with("deleted", true)
     }
   }
+  action bad_unretired_collect_step = any {
+    step,
+    all {
+      not(s.retired), not(s.pinned), not(s.root), not(s.deleted), not(s.stageProtected), s.age >= 2,
+      s' = s.with("deleted", true)
+    }
+  }
 
   val publication = not(s.badDataCommit) and not(s.badPlanCommit) and not(s.badSealCommit) and not(s.badPublication) and not(s.badParent) and
     s.visible1 == s.visible2 and (not(s.visible1) or s.publications > 0)
   val fencing_and_outcomes = not(s.stalePublished) and not(s.badFence) and s.effects1 <= 1 and (not(s.response1) or s.reply1 == s.outcome1)
-  val gc = (not(s.visible1) or s.publishedDataReady) and (not(s.visible1) or (s.root and not(s.retired) and not(s.deleted))) and not(s.badGc) and not(s.deleted and (s.pinned or s.root)) and not(s.retired and (s.root or s.pinned or s.stageProtected)) and (not(s.deleted) or s.age >= 2)
+  val gc = (not(s.visible1) or s.publishedDataReady) and (not(s.visible1) or (s.root and not(s.retired) and not(s.deleted))) and not(s.badGc) and not(s.deleted and (s.pinned or s.root)) and not(s.retired and (s.root or s.pinned or s.stageProtected)) and (not(s.deleted) or (s.retired and s.age >= 2))
 }

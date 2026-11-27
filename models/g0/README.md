@@ -44,7 +44,10 @@ incorrect reconciliation, a stale plan after CAS refresh, nondurable or
 unprotected publication, a foreign-object receipt, protected-stage retirement,
 pin/retire races, resurrection, and collection before the minimum age. A separate
 witness reaches a retired, unpinned object younger than the minimum; the
-young-collection mutant bypasses only that age guard. The retired-publication mutant bypasses both
+young-collection mutant bypasses only that age guard. A second witness reaches
+an old, unreferenced object without a retirement record; a mutant bypasses the
+retirement guard and checks that deletion without retirement violates GC safety.
+The retired-publication mutant bypasses both
 retirement and staging-protection guards: normal protected staging prevents the
 retired state from being reached, so this is a compound-fault control. Each
 mutant must produce a counterexample.

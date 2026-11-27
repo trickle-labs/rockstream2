@@ -1,5 +1,29 @@
 # G0.3 bounded model runs
 
+## Retirement-before-collection control
+
+On 2026-11-27, a guard-bypass experiment against the prior invariant reached
+`deleted && !retired` while `gc` was still true. The invariant now requires
+retirement before deletion. An old, unpinned, unreferenced and unretired object
+is reachable; bypassing the retirement guard then yields a `gc` counterexample.
+This does not change the normal collection transition or qualify G0.3.
+
+The model with SHA-256
+`1d3d92320efc13e04986a6636c1bcd3d2168cf9128f3cac6464b8221ea1f4468`
+and check script with SHA-256
+`04c6be26cd723669f53d36851e175a8b68d98e6266bc3e4be74266000468a7f0`
+passed eleven-step symbolic invariant checking, 27 witnesses and 27 negative
+controls. The [raw run](retirement-order-raw-run.tar.gz), SHA-256
+`8c5a36d8f2109c3149032871ccbf350cb071c0d613dbb709932035b0dedfc57b`,
+includes the prior-invariant witness and trace, source hashes, environment,
+per-invocation output, statuses and traces, a PostgreSQL-backed fast gate and
+the separate depth-3 TLC run. All 56 statuses, 27 counterexamples and 54
+parseable traces were checked. TLC found 11,746 distinct depth-tagged
+configurations (40,375 generated, zero queued); this count is not for the
+eleven-step symbolic check. Quint 0.34.0, Apalache 0.62.4, Node 26.13.1 and
+OpenJDK 21.0.13.1 ran on Darwin arm64. The fast gate preceded integration with
+later main revisions.
+
 ## Minimum-age control
 
 On 2026-11-27, the model with SHA-256
