@@ -15,7 +15,7 @@ Build Rockstream 2 incrementally along one executable vertical path (`W1-G`) thr
 ## Alternatives and consequences
 
 - **Heavy upfront G0 mega-gate** (building dual runtimes, dual full storage engines, 1,000-view benchmarks, and a FoundationDB-style cluster simulator before G1): Rejected; creates massive pre-code drag and incentivizes checkbox theater rather than real executable slices.
-- **Pretending deterministic simulation covers Tokio/SlateDB/S3 internals:** Rejected; focuses deterministic replay where it works (pure state machines) and relies on real-process kill/restart tests for storage and network boundaries.
+- **Pretending deterministic simulation covers Tokio/SlateDB/object-store internals:** Rejected; focuses deterministic replay where it works (pure state machines) and relies on real-process kill/restart tests for storage and network boundaries.
 - **Trade-off accepted:** Specialized tools (e.g., Verus proofs, targeted fuzzers, mutation campaigns) are added only when a concrete verification gap warrants their maintenance cost, rather than mandated from day one.
 - **Milestone review trade-off (2026-11-27):** Independently reviewed changes can reach `main` before human review. The complete milestone receives one human review of the integrated candidate; findings may require repair or revert. Required checks and separate release authorization remain in force.
 
