@@ -522,3 +522,13 @@ an earlier violation from normal transitions within that bound. This is an
 inference from separate checks, not an observed result of either original
 invariant control. The unprotected-stage control bypasses both stage protection
 and the namespace fence. These corrections do not establish a full-suite pass.
+
+The [fencing-control depth evidence](fencing-control-depth.tar.gz) (SHA-256
+`9c178ad913f79dbf36c57921764dd17336c2250bb1b3b0e4749a8bf721610a03`)
+preserves the observed original-bound 13-step `NoError` failure and a separate
+14-step counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+The faulty publication bypasses both stale-owner and namespace fences. The
+surrounding isolated diagnostic was still running when the archive was created;
+its final container status and inspection are not included. This correction
+does not establish a full-suite pass.
