@@ -1,13 +1,15 @@
 # G0.4 native kernel spike: preliminary evidence
 
-**Verdict: inconclusive.** This is a draft experiment, not a foundation-gate
-pass, an ADR decision or a supported runtime. G0.1 has merged into main at
-`43b084989c166620d1f518ef7ea7c8fbc6c50406`; this candidate integrates that
-revision and must be checked again against the actual integration revision.
+**Initial verdict: inconclusive.** This document preserves the original
+experiment and its unresolved physical-resource findings. The later,
+independently reviewed [bounded feasibility decision](../../evidence/g0-4/bounded-feasibility-decision.md)
+records a scoped G0.4 native-feasibility pass; it does not qualify the G0
+foundation gate as a whole or a supported runtime. G0.1 was merged at
+`43b084989c166620d1f518ef7ea7c8fbc6c50406`.
 
-## Scope of the next decision
+## Scope of the feasibility decision
 
-[ADR 0013](../adr/0013-minimum-mechanisms-and-independent-qualification.md) separates the G0.4 **native feasibility** verdict from **runtime resource qualification**. A revised feasibility review covers exact `W1-G`/`Q(empty)` results, retractions and cross-terms, acyclic scalar-epoch progress, state ownership across success/failure, and explicit logical admission/queue/output-lifetime bounds. It must name the trusted input-attribution boundary; self-reported Arrow byte counts alone do not bound arbitrary external buffers. This decision change does not turn the recorded inconclusive experiment into a pass. A new independently reviewed verdict and ADR update are required before the foundation track unlocks G1.
+[ADR 0013](../adr/0013-minimum-mechanisms-and-independent-qualification.md) separates the G0.4 **native feasibility** verdict from **runtime resource qualification**. The later bounded decision reviews exact `W1-G`/`Q(empty)` results, retractions and cross-terms, acyclic scalar-epoch progress, state ownership across success/failure, and explicit logical admission/queue/output-lifetime bounds. It names the trusted input-attribution boundary; self-reported Arrow byte counts alone do not bound arbitrary external buffers. It does not turn the original inconclusive observations into a physical-resource pass. G1 still requires the other foundation prerequisites.
 
 The allocation failures and input-attribution counterexample below remain open blockers for any G2 runtime preview. Before qualifying that runtime, account for all resident/temporary/shared/dependency bytes, actual allocation and overload behavior, cancellation/control reserves and process headroom; prove the declared controlled-error or process-isolation/recovery behavior on the complete admitted path. A logical budget or small RSS observation cannot satisfy that gate. G1 semantic work may proceed after its revised foundation prerequisites pass while this work is tracked explicitly; it cannot advertise a safe production allocator or runtime.
 
@@ -48,8 +50,7 @@ oracle. The separate G0.1 PostgreSQL replay checks the same fixture. Local
 fast checks passed against a disposable PostgreSQL instance; exact candidate,
 commands and observations are in the PR. This evidence does not establish
 performance, general SQL, durable state, cloud operation, or proof that all
-resource exhaustion is safe. Independent review of the revised feasibility scope, explicit logical resource contracts and an ADR update remain
-required for a feasibility decision; complete runtime resource evidence remains required before G2 preview qualification. The prior small-fixture RSS observations do
+resource exhaustion is safe. The later bounded decision records independent review of the revised feasibility scope and logical resource contracts; complete runtime resource evidence remains required before G2 preview qualification. The prior small-fixture RSS observations do
 not qualify resource admission. Do not infer the predeclared fallback trigger solely from missing
 measurements.
 
@@ -93,9 +94,8 @@ in a separate bounded episode; persistent contention has no progress guarantee.
 
 These statements describe the logical boundary only. The kernel does not
 enforce a process-wide input-ownership policy, and the output budget is shared
-only by kernels given the same budget. A new independently reviewed feasibility
-verdict remains necessary; neither this envelope nor the new test qualifies
-allocator failure, shared physical bytes or process headroom.
+only by kernels given the same budget. The later bounded feasibility decision
+does not qualify allocator failure, shared physical bytes or process headroom.
 
 The spike clones its fixed state and scans fixed-capacity slots; this fanout
 test does not establish efficient incremental scaling as unrelated state grows.
