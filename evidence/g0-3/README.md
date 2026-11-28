@@ -573,6 +573,15 @@ head instead of the retained committed result. The surrounding isolated
 diagnostic was still running when the archive was created; its final container
 status and inspection are not included. This is not a full-suite pass.
 
+The completed [original-bound control batch](original-controls-batch.tar.gz)
+(SHA-256 `75067b812656316c01302e2222465c3fef57cbb69f96df950af38d5408898a7e`)
+records all ten individual attempts at 13 steps, source and tool identities,
+container inspections and cleanup. Nine returned `NoError` and thus failed to
+find their required counterexample; only `bad_page_generation_step` returned a
+counterexample, involving an unsafe old/unprotected upload and bypass of the
+generation/protection guard. Runner completion does not mean the controls or
+full checker passed. Deeper diagnostic evidence is recorded separately.
+
 The [parent control depth evidence](parent-control-depth.tar.gz) (SHA-256
 `8e9150114f3d3aaa68a7f3c1b1a40a3fa0fa23943aa94fe7564735866f63c389`)
 preserves the original 13-step `NoError` failure and a separate 14-step
