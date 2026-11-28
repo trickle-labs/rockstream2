@@ -563,6 +563,16 @@ the namespace guard. The surrounding isolated diagnostic was still running
 when the archive was created; its final container status and inspection are not
 included. This is not a full-suite pass.
 
+The [reply control depth evidence](reply-control-depth.tar.gz) (SHA-256
+`399646f89b43245095c8c6920e27d7c8a7853a7075ade60bfb03f1a0b1ce7846`)
+preserves the original 13-step `NoError` failure and a separate 14-step
+counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+After a later head advance, faulty reconciliation replies with the current
+head instead of the retained committed result. The surrounding isolated
+diagnostic was still running when the archive was created; its final container
+status and inspection are not included. This is not a full-suite pass.
+
 The [parent control depth evidence](parent-control-depth.tar.gz) (SHA-256
 `8e9150114f3d3aaa68a7f3c1b1a40a3fa0fa23943aa94fe7564735866f63c389`)
 preserves the original 13-step `NoError` failure and a separate 14-step
