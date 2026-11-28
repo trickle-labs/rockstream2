@@ -1,5 +1,62 @@
 # G0.3 bounded model runs
 
+## Linux evaluator setup
+
+The [evaluator setup archive](linux-evaluator-setup.tar.gz) (SHA-256
+`01a25cc4d9dcfec1d102162f2e671caa041cf2d2b822601298673b9f64b25e70`)
+records a failed offline evaluator fetch, the upstream v0.8.0 Linux ARM64 asset
+identity, acquisition provenance and a successful isolated one-step observation
+with the verified evaluator mounted read-only. Evaluator execution is inferred
+from the pinned Quint code and the successful result, not independently traced.
+The archive excludes the binary and does not establish a full-suite or G0 pass.
+
+## Current-model depth-3 TLC count
+
+On 2026-11-28, the exact model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`
+and `count-states.sh` SHA-256
+`f0c6e65d466dcfb604c49d511650c57986884123b7c6604bf8313d9df44abaae`
+completed the separate depth-three TLC count. TLC generated **162,607**
+configurations and found **37,487 distinct depth-tagged configurations**, with
+zero queued and no reported invariant violation. Graph depth 4 includes the
+initial configuration. The wrapper can count the same protocol state more than
+once at different depths. TLC uses fingerprints: its log reports collision
+estimates of 2.5e-10 optimistically and 1.0e-11 based on actual fingerprints.
+These values and the count describe this bounded wrapper, not the distinct
+untagged state space or the separate sixteen-step symbolic check.
+
+The [raw run and runner](current-model-tlc-raw.tar.gz) have SHA-256
+`7d93ae457c4a552d84582345539696323b195952c185727cbd55716deadc0077`.
+The archive preserves the exact outer runner and `docker create` arguments,
+container inspections, generated wrapper and TLC configuration, per-invocation
+arguments and output, status, source snapshots and before/after input manifests,
+and the pinned image build record. All 78 archived regular files were compared
+with their source contents. The outer command was:
+
+```sh
+sh /Users/grove/.p2p/evidence/rockstream-g0-3/container-prep/campaign/run.sh tlc sha256:5190102c30b439f4f4a2dfce6e99e918546614ab0d467d2775f585dd6205cf85
+```
+
+The runner used a Linux arm64 Docker container with network disabled, read-only
+root and inputs, no published ports, a separate evidence mount, a 4 GiB memory
+limit and two CPUs. The temporary filesystem was executable for native solver
+libraries and remained `nosuid,nodev`. Pre- and post-run inspections passed;
+the external network probe returned `ENETUNREACH`, both input manifests matched,
+and the invocation and overall run exited zero without OOM. The wrapper records
+each output stream separately before replaying stdout then stderr, so their
+cross-stream ordering is not preserved.
+
+The run used Quint 0.34.0, Apalache 0.62.4, Node 26.13.1, Python 3.12.16 and
+Temurin OpenJDK 21.0.13+9. TLC reported one worker, a 512 MiB heap and a 64 MiB
+off-heap allowance. The Apalache JAR SHA-256 was
+`e5223915507b65cc5f1638bd037ede60f8a4fc1644aff46355779f9b05df9262`;
+the Quint npm lockfile was
+`360799e9945a369203433b09d84ef1ce8371e961e27c6e98b44b6f160b6f11dc`.
+The recorded `check.sh` snapshot SHA-256 was
+`93bb20790fcb2ad25ee84cb9b87ab72155a6eb46c981efae4e15a51dd21e091d`;
+the count did not execute it and does not establish that the full check passes.
+This evidence does not qualify G0.3, an implementation, or the G0 milestone.
+
 ## Recovered publication-boundary run
 
 **Verdict: inconclusive.** The isolated source checkout disappeared during a
@@ -343,3 +400,213 @@ The archive and ADR note were added after the checked source commit. They do
 not modify the model or check script, but the later evidence-only commit was not
 itself the checked commit. The archive's `environment.txt` records SHA-256
 hashes of both tested files so reviewers can verify their identities.
+
+## Root manifest and identity extension: focused evidence
+
+The [focused archive](root-identity-focused.tar.gz) (SHA-256
+`56b34088dbf5a20b8da0657fca67270d6f33574a0098649ff8feee743d07d3c1`)
+records 14 bounded observations and deliberate fault checks against model
+SHA-256 `c457138f53531e133529404fff3f7b56228defc4d1f00f1f07e9673778f8279d`.
+It includes source, commands, per-check statuses and outputs, 14 inspected ITF
+traces, and the corresponding raw Apalache runs. All 204 archived file hashes
+were compared with the evidence directory. The archive's README identifies the
+bounds, scope, compound fault and the separately frozen full-suite script.
+These focused results do not establish a full-suite or G0.3 gate pass.
+
+The [Active-guard depth evidence](bad-active-depth.tar.gz) (SHA-256
+`b111bc5368601add8168ef7ba5dfc82c84f4eb8357b68f653fb9744719c2797f`)
+preserves the original 13-step control failure and the separately reviewed
+14-step counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 24 archived file hashes match their evidence copies. This supports only the
+Active control's revised bound; it does not establish a full-suite pass.
+
+The [plan-revision observation depth evidence](plan-revision-depth.tar.gz)
+(SHA-256 `e5d4a03e3ced0c7f9f3de6ed69a0fea96bfa2fcdcbb6c1d3f2ef872fb1dd64e4`)
+preserves the original 13-step non-reachability result and the separately
+reviewed 14-step witness on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 25 archived file hashes match their evidence copies. This supports only the
+observation's revised bound; the invariant control and full suite are separate.
+
+The [unprotected-stage observation depth evidence](unprotected-observation-depth.tar.gz)
+(SHA-256 `d98f233cbce0fe06cf919d76b781491f2df1f9d470b7f94be2210822aa656c12`)
+preserves the original 13-step non-reachability result and the separately
+reviewed 14-step witness on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 25 archived file hashes match their evidence copies. The observation is a
+compound stage-protection and namespace-fence bypass; its revised bound is not
+the separate invariant control or a full-suite pass.
+
+The [retired-publication observation depth evidence](retired-observation-depth.tar.gz)
+(SHA-256 `f99be73c55bee3c0dfa66d7eb97974094cd731c098de0260d8bac97619ffcf22`)
+preserves the 15- and 16-step non-reachability results and independently reviewed
+19-step witness on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 34 archived file hashes match their evidence copies. The witness bypasses
+retirement, stage protection and namespace fences together; it is not the
+separate invariant control or a full-suite pass.
+
+The [Active-guard observation depth evidence](active-observation-depth.tar.gz)
+(SHA-256 `5949643b0fc8169a740a305fb087fa28c3a86031d2f3ed4e44a268910da3c662`)
+preserves the original 13-step observation miss and the independently reviewed
+14-step invariant-control trace whose final state satisfies its predicate on
+model SHA-256 `4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 25 archived file hashes match their evidence copies. The deeper trace was
+not a separately executed observation; it is not a full-suite pass.
+
+The [catalog-guard observation depth evidence](catalog-observation-depth.tar.gz)
+(SHA-256 `90b6af0213c2809791a9f2d3256b733e7f7b0a3eb40585f0f34d471cfded12e1`)
+preserves the original 13-step observation miss and the independently reviewed
+14-step invariant-control trace whose final state satisfies its predicate on
+model SHA-256 `4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 23 archived file hashes match their evidence copies. The deeper trace was
+not a separately executed observation, and the original-bound invariant control
+was not run; neither result establishes a full-suite pass.
+
+The [run-incarnation observation depth evidence](run-observation-depth.tar.gz)
+(SHA-256 `48dd8d8ffc98b5d22c8ea8a010104734211b3dae96a6293840328370d0b01fd5`)
+preserves the original 13-step observation miss and the independently reviewed
+14-step witness on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 25 archived file hashes match their evidence copies. This supports only the
+observation's revised bound, not the invariant control or full suite.
+
+The [observation preflight](observation-preflight.tar.gz) (SHA-256
+`3c0bb731e63546a4d5d314cb070a6b5ad40c6ae625b3872091eb391d06961b70`)
+records all 64 direct observations on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`
+and the earlier check script SHA-256
+`95b8c9a0cdb6d0db92d553fcedd39c566d0b5901129583ccc9132d6348e818ac`.
+Fifty-eight returned status 0; cases 022, 026, 030, 046, 047 and 048 returned
+`Observation not reached` and are preserved. Their separately reviewed deeper
+witness evidence is linked above; among observations, the working script adjusts
+only those six bounds. It also adjusts the separately evidenced Active control
+bound from 13 to 14. All 922 archived file hashes match their evidence copies.
+This preflight did not run the typecheck, invariant or control-loop checks and
+is not a full-suite or gate pass.
+
+The [supplemental 16-step invariant run](supplemental-16-step.tar.gz) (SHA-256
+`2e5f9f094417332cfad7ac2b6d2d664a738d63fcafbc9b93a7171efe07f947ef`)
+returned status 0 for publication, fencing/outcomes and GC invariants on model
+SHA-256 `4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+It records the exact command, limits, tool hashes and raw verifier log; the
+cached tool distribution is not included. All 12 archived file hashes match
+their evidence copies. This bounded invariant result is not a full-suite or
+G0.3 gate pass.
+
+The [exploratory control-bound diagnostics](control-bound-diagnostics.tar.gz)
+(SHA-256 `9739f992b216775ba66e65101a7479642054052a70232d9e7501bba36e85af7d`)
+record 11 separate counterexamples on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+Ten controls were checked at exploratory depth 14 instead of their original
+depth 13; retry revalidation used its original depth 16. The archive records
+each actual trace length and identifies compound faults. These diagnostics do
+not replace original-bound results, a full checker run or a G0.3 gate pass.
+
+The [catalog-control depth evidence](catalog-control-depth.tar.gz) (SHA-256
+`280494e705f7e6dc4f38a9795e86a21820bdf3f18b058395f93039238178e355`)
+preserves an observed original-bound 13-step `NoError` failure and a separately
+run, independently reviewed 14-step counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+The surrounding isolated diagnostic was still running when this archive was
+created; it does not record that container's final status or inspection.
+
+The retired-publication invariant control's original 15-step invocation was
+not run. Its deeper bound of 19 is supported by the separately recorded
+[15/16-step observation misses and 19-step mutant witness](retired-observation-depth.tar.gz),
+combined with the [normal 16-step invariant result](supplemental-16-step.tar.gz):
+the mutant publication transition necessarily satisfies the observation and
+violates GC, while the normal transition alone had no GC violation through 16.
+This is an inference from those separate checks, not an observed result of the
+original invariant control. Neither correction establishes a full-suite pass.
+
+The run-incarnation and unprotected-publication invariant controls' original
+13-step invocations were not run. Their bounds of 14 are supported by the
+separately recorded [run observation](run-observation-depth.tar.gz) and
+[unprotected-stage observation](unprotected-observation-depth.tar.gz): each
+direct observation was not reached at 13 and produced a reviewed witness at 14.
+Each corresponding faulty publication necessarily satisfies its observation,
+and the [normal 16-step invariant result](supplemental-16-step.tar.gz) excludes
+an earlier violation from normal transitions within that bound. This is an
+inference from separate checks, not an observed result of either original
+invariant control. The unprotected-stage control bypasses both stage protection
+and the namespace fence. These corrections do not establish a full-suite pass.
+
+The [fencing-control depth evidence](fencing-control-depth.tar.gz) (SHA-256
+`9c178ad913f79dbf36c57921764dd17336c2250bb1b3b0e4749a8bf721610a03`)
+preserves the observed original-bound 13-step `NoError` failure and a separate
+14-step counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+The faulty publication bypasses both stale-owner and namespace fences. The
+surrounding isolated diagnostic was still running when the archive was created;
+its final container status and inspection are not included. This correction
+does not establish a full-suite pass.
+
+The [namespace-control depth evidence](namespace-control-depth.tar.gz) (SHA-256
+`e8903fc522d18b4404ac531815f424bc6646922dcacd75cd8fb3aefe04d8d3fa`)
+preserves the observed original-bound 13-step `NoError` failure and a separate
+14-step counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+The compound fault closes the namespace while stage protection remains, then
+bypasses the independent namespace guard. The surrounding isolated diagnostic
+was still running when the archive was created; its final container status and
+inspection are not included. This does not establish a full-suite pass.
+
+The [page-base control depth evidence](page-base-control-depth.tar.gz) (SHA-256
+`09482fcdd0c0bb342e497044d9a81a63653de6887d2625c92f623c550240a6b4`)
+preserves the original 13-step `NoError` failure and a separate 14-step
+counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+The mutant bypasses the page-base check after a racer advances the head and the
+CAS revision is refreshed without rebuilding the protected page. The surrounding
+isolated diagnostic was still running when the archive was created; its final
+container status and inspection are not included. This is not a full-suite pass.
+
+The [refresh control depth evidence](refresh-control-depth.tar.gz) (SHA-256
+`2e0c55ceeef31837e689d803f79f8bdd930fd47992bf43d5dc2965fb68caa204`)
+preserves the original 13-step `NoError` failure and a separate 14-step
+counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+The compound fault combines unsafe owner rebinding at refresh with bypass of
+the namespace guard. The surrounding isolated diagnostic was still running
+when the archive was created; its final container status and inspection are not
+included. This is not a full-suite pass.
+
+The [reply control depth evidence](reply-control-depth.tar.gz) (SHA-256
+`399646f89b43245095c8c6920e27d7c8a7853a7075ade60bfb03f1a0b1ce7846`)
+preserves the original 13-step `NoError` failure and a separate 14-step
+counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+After a later head advance, faulty reconciliation replies with the current
+head instead of the retained committed result. The surrounding isolated
+diagnostic was still running when the archive was created; its final container
+status and inspection are not included. This is not a full-suite pass.
+
+The completed [original-bound control batch](original-controls-batch.tar.gz)
+(SHA-256 `75067b812656316c01302e2222465c3fef57cbb69f96df950af38d5408898a7e`)
+records all ten individual attempts at 13 steps, source and tool identities,
+container inspections and cleanup. Nine returned `NoError` and thus failed to
+find their required counterexample; only `bad_page_generation_step` returned a
+counterexample, involving an unsafe old/unprotected upload and bypass of the
+generation/protection guard. Runner completion does not mean the controls or
+full checker passed. Deeper diagnostic evidence is recorded separately.
+
+The [plan-revision control depth evidence](plan-control-depth.tar.gz) (SHA-256
+`257015cc242f36c69cc2f0445db301c67eaba4a1624ec46de648b68fbc1adade`)
+records the direct 13-step `publication` control's `NoError` failure and a
+separate 14-step observation trace with `badPlanCommit=true`, which violates
+the publication invariant. The latter supports the deeper bound by inference;
+it is not a direct 14-step invariant-control invocation. The surrounding
+isolated diagnostic was still running when archived, so final inspection and
+outcome are not included. This does not establish a full-suite pass.
+
+The [parent control depth evidence](parent-control-depth.tar.gz) (SHA-256
+`8e9150114f3d3aaa68a7f3c1b1a40a3fa0fa23943aa94fe7564735866f63c389`)
+preserves the original 13-step `NoError` failure and a separate 14-step
+counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+The mutant bypasses the parent guard after a competing publication advances
+the head and the candidate revision and page are refreshed. The surrounding
+isolated diagnostic was still running when the archive was created; its final
+container status and inspection are not included. This is not a full-suite pass.

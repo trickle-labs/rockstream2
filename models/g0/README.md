@@ -18,6 +18,9 @@ retaining the original parent, generation and plan. One refresh is allowed per
 retry episode; a further conflict defers the still-protected preparation, and a
 new episode can resume it. A root plan change invalidates an old sealed preparation
 even if its parent and owner are unchanged; a new plan can be prepared.
+The metadata-refresh witness records a metadata advance during the same
+preparation before refresh; its observed trace also includes an input advance,
+so it does not isolate metadata as the sole source of the conflict.
 Either operation can lose its response; each stored outcome is checked against
 an independent ghost of the original commit revision and survives an unrelated
 root advance. Pin and retire requests prepare against a revision,
@@ -60,6 +63,23 @@ protection state that survives later preparation. Speculative metadata upload
 before seal durability is allowed as a conservative diagnostic overapproximation;
 publication still requires a durable seal.
 
+Every modeled non-publication root operation also selects an uploaded, protected
+manifest bound to its operation, base revision and allocation generation. Input
+acceptance, definitive rejection and a competing publication additionally bind
+their represented payload digest at upload. A separate contender permits pin and
+retire manifests to be prepared independently from the same root; the loser must
+discard or rebuild its stale candidate. Selected-root protection follows each
+root selection. Protection of a replaced publication page may be retained
+conservatively; the abstraction does not establish bounded reclamation.
+
+The identity abstraction has one fixed client-generation/sequence identity and
+two digest classes. A durable acceptance or definitive rejection records its
+digest and outcome; immutable ghosts retain the original outcome and effect
+count. A retry returns the recorded result, a payload conflict, or an expiry
+after pruning behind a monotone floor. It observes at most one retry response,
+and does not model the full sequence window, multiple clients or batching.
+Publication identities similarly bind a digest and reject mismatched retries.
+
 The single modeled metadata page can represent the complete compact immutable
 manifest of the initial serialized baseline. Its allocation-generation and
 protection behavior are assumptions of this abstraction; they do not select or
@@ -91,7 +111,9 @@ that independent fence and are compound controls.
 Additional controls cover Active, run, catalog, input acceptance, proof and
 upper, stale page content, allocation generation and selected root protection.
 Invalid input controls bypass both seal-time and publication validation;
-the closed-generation control combines stale upload with final guard bypass.
+the closed-generation control combines stale upload with final guard bypass. The
+non-publication generation control also bypasses stale-base and generation
+checks together because closure itself advances the root.
 The stale-revision single bypass remains safe within the checked bound because
 the page-base guard masks it. A separate compound control bypasses both guards
 and witnesses a stale revision and page at the actual commit.
@@ -119,10 +141,13 @@ Apalache is symbolic and does not report an enumerated state count. Separately,
 `models/g0/count-states.sh` runs a depth-3 exhaustive TLC exploration using
 Quint 0.34.0 and its Apalache 0.62.4 distribution. It appends a depth variable
 and wrapper actions to the same model without modifying its transitions. The
-recovered current-source run explored 16,490 distinct depth-tagged
-configurations (50,117 generated, zero queued); a protocol state reached at
-multiple depths is counted multiple times. The [evidence](../../evidence/g0-3/README.md#recovered-publication-boundary-run)
-records this run and the source recovery. The earlier 6,260 count and
+[current-model run](../../evidence/g0-3/README.md#current-model-depth-3-tlc-count)
+found 37,487 distinct depth-tagged configurations (162,607 generated, zero
+queued). A protocol state reached at multiple depths is counted multiple times;
+the TLC count has the fingerprint-collision limits recorded in the evidence.
+The [recovered earlier-source run](../../evidence/g0-3/README.md#recovered-publication-boundary-run)
+found 16,490 distinct depth-tagged configurations; it does not count the current
+model. The earlier 6,260 count and
 [projection](../../evidence/g0-3/README.md#depth-3-state-count) apply only to
 older models. No projection was computed for this model, and none of these
 counts enumerates the sixteen-step symbolic check. `QUINT` may name a
@@ -135,8 +160,8 @@ changing interval, the seal storage protocol, or the full metadata tree and
 staging namespace lifecycle in full. Visibility flags do not model output values or multiple versioned partition roots. The
 competing publication is an atomic abstract action rather than a second prepared
 receipt set. GC models one pin and one retire request, not complete reachability
-traversal or physical deletion retries. Operation retention floors and the
-complete retry protocol are omitted; reader leases and real-time grace periods
+traversal or physical deletion retries. The complete retention and
+retry protocol is omitted; reader leases and real-time grace periods
 belong to G4.0. Independent safety review must judge these limitations before
 this model is cited for G0.3; no implementation, provider or G0 gate is
 qualified by these checks.
