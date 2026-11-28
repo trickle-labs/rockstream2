@@ -446,3 +446,32 @@ Ten controls were checked at exploratory depth 14 instead of their original
 depth 13; retry revalidation used its original depth 16. The archive records
 each actual trace length and identifies compound faults. These diagnostics do
 not replace original-bound results, a full checker run or a G0.3 gate pass.
+
+The [catalog-control depth evidence](catalog-control-depth.tar.gz) (SHA-256
+`280494e705f7e6dc4f38a9795e86a21820bdf3f18b058395f93039238178e355`)
+preserves an observed original-bound 13-step `NoError` failure and a separately
+run, independently reviewed 14-step counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+The surrounding isolated diagnostic was still running when this archive was
+created; it does not record that container's final status or inspection.
+
+The retired-publication invariant control's original 15-step invocation was
+not run. Its deeper bound of 19 is supported by the separately recorded
+[15/16-step observation misses and 19-step mutant witness](retired-observation-depth.tar.gz),
+combined with the [normal 16-step invariant result](supplemental-16-step.tar.gz):
+the mutant publication transition necessarily satisfies the observation and
+violates GC, while the normal transition alone had no GC violation through 16.
+This is an inference from those separate checks, not an observed result of the
+original invariant control. Neither correction establishes a full-suite pass.
+
+The run-incarnation and unprotected-publication invariant controls' original
+13-step invocations were not run. Their bounds of 14 are supported by the
+separately recorded [run observation](run-observation-depth.tar.gz) and
+[unprotected-stage observation](unprotected-observation-depth.tar.gz): each
+direct observation was not reached at 13 and produced a reviewed witness at 14.
+Each corresponding faulty publication necessarily satisfies its observation,
+and the [normal 16-step invariant result](supplemental-16-step.tar.gz) excludes
+an earlier violation from normal transitions within that bound. This is an
+inference from separate checks, not an observed result of either original
+invariant control. The unprotected-stage control bypasses both stage protection
+and the namespace fence. These corrections do not establish a full-suite pass.

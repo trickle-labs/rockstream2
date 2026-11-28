@@ -67,8 +67,8 @@ for control in fencing_and_outcomes:bad_input_accept_step publication:bad_active
   invariant=${control%%:*}
   step=${control#*:}
   bound=13
-  case "$step" in bad_retry_step|bad_retry2_step) bound=19 ;; bad_retry_revalidation_step|bad_root_page_step) bound=16 ;; bad_corrupt_outcome1_step|bad_corrupt_outcome2_step) bound=15 ;; bad_active_step) bound=14 ;; esac
-  [ "$step" != bad_publish_retired_step ] || bound=15
+  case "$step" in bad_retry_step|bad_retry2_step) bound=19 ;; bad_retry_revalidation_step|bad_root_page_step) bound=16 ;; bad_corrupt_outcome1_step|bad_corrupt_outcome2_step) bound=15 ;; bad_active_step|bad_catalog_step|bad_run_step|bad_unprotected_step) bound=14 ;; esac
+  [ "$step" != bad_publish_retired_step ] || bound=19
   output=$("$quint" verify "$model" --invariant "$invariant" --step "$step" --max-steps "$bound" --verbosity 0 2>&1) && {
     echo "ERROR: $step did not produce a counterexample" >&2
     exit 1
