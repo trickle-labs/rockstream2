@@ -343,3 +343,106 @@ The archive and ADR note were added after the checked source commit. They do
 not modify the model or check script, but the later evidence-only commit was not
 itself the checked commit. The archive's `environment.txt` records SHA-256
 hashes of both tested files so reviewers can verify their identities.
+
+## Root manifest and identity extension: focused evidence
+
+The [focused archive](root-identity-focused.tar.gz) (SHA-256
+`56b34088dbf5a20b8da0657fca67270d6f33574a0098649ff8feee743d07d3c1`)
+records 14 bounded observations and deliberate fault checks against model
+SHA-256 `c457138f53531e133529404fff3f7b56228defc4d1f00f1f07e9673778f8279d`.
+It includes source, commands, per-check statuses and outputs, 14 inspected ITF
+traces, and the corresponding raw Apalache runs. All 204 archived file hashes
+were compared with the evidence directory. The archive's README identifies the
+bounds, scope, compound fault and the separately frozen full-suite script.
+These focused results do not establish a full-suite or G0.3 gate pass.
+
+The [Active-guard depth evidence](bad-active-depth.tar.gz) (SHA-256
+`b111bc5368601add8168ef7ba5dfc82c84f4eb8357b68f653fb9744719c2797f`)
+preserves the original 13-step control failure and the separately reviewed
+14-step counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 24 archived file hashes match their evidence copies. This supports only the
+Active control's revised bound; it does not establish a full-suite pass.
+
+The [plan-revision observation depth evidence](plan-revision-depth.tar.gz)
+(SHA-256 `e5d4a03e3ced0c7f9f3de6ed69a0fea96bfa2fcdcbb6c1d3f2ef872fb1dd64e4`)
+preserves the original 13-step non-reachability result and the separately
+reviewed 14-step witness on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 25 archived file hashes match their evidence copies. This supports only the
+observation's revised bound; the invariant control and full suite are separate.
+
+The [unprotected-stage observation depth evidence](unprotected-observation-depth.tar.gz)
+(SHA-256 `d98f233cbce0fe06cf919d76b781491f2df1f9d470b7f94be2210822aa656c12`)
+preserves the original 13-step non-reachability result and the separately
+reviewed 14-step witness on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 25 archived file hashes match their evidence copies. The observation is a
+compound stage-protection and namespace-fence bypass; its revised bound is not
+the separate invariant control or a full-suite pass.
+
+The [retired-publication observation depth evidence](retired-observation-depth.tar.gz)
+(SHA-256 `f99be73c55bee3c0dfa66d7eb97974094cd731c098de0260d8bac97619ffcf22`)
+preserves the 15- and 16-step non-reachability results and independently reviewed
+19-step witness on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 34 archived file hashes match their evidence copies. The witness bypasses
+retirement, stage protection and namespace fences together; it is not the
+separate invariant control or a full-suite pass.
+
+The [Active-guard observation depth evidence](active-observation-depth.tar.gz)
+(SHA-256 `5949643b0fc8169a740a305fb087fa28c3a86031d2f3ed4e44a268910da3c662`)
+preserves the original 13-step observation miss and the independently reviewed
+14-step invariant-control trace whose final state satisfies its predicate on
+model SHA-256 `4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 25 archived file hashes match their evidence copies. The deeper trace was
+not a separately executed observation; it is not a full-suite pass.
+
+The [catalog-guard observation depth evidence](catalog-observation-depth.tar.gz)
+(SHA-256 `90b6af0213c2809791a9f2d3256b733e7f7b0a3eb40585f0f34d471cfded12e1`)
+preserves the original 13-step observation miss and the independently reviewed
+14-step invariant-control trace whose final state satisfies its predicate on
+model SHA-256 `4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 23 archived file hashes match their evidence copies. The deeper trace was
+not a separately executed observation, and the original-bound invariant control
+was not run; neither result establishes a full-suite pass.
+
+The [run-incarnation observation depth evidence](run-observation-depth.tar.gz)
+(SHA-256 `48dd8d8ffc98b5d22c8ea8a010104734211b3dae96a6293840328370d0b01fd5`)
+preserves the original 13-step observation miss and the independently reviewed
+14-step witness on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+All 25 archived file hashes match their evidence copies. This supports only the
+observation's revised bound, not the invariant control or full suite.
+
+The [observation preflight](observation-preflight.tar.gz) (SHA-256
+`3c0bb731e63546a4d5d314cb070a6b5ad40c6ae625b3872091eb391d06961b70`)
+records all 64 direct observations on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`
+and the earlier check script SHA-256
+`95b8c9a0cdb6d0db92d553fcedd39c566d0b5901129583ccc9132d6348e818ac`.
+Fifty-eight returned status 0; cases 022, 026, 030, 046, 047 and 048 returned
+`Observation not reached` and are preserved. Their separately reviewed deeper
+witness evidence is linked above; among observations, the working script adjusts
+only those six bounds. It also adjusts the separately evidenced Active control
+bound from 13 to 14. All 922 archived file hashes match their evidence copies.
+This preflight did not run the typecheck, invariant or control-loop checks and
+is not a full-suite or gate pass.
+
+The [supplemental 16-step invariant run](supplemental-16-step.tar.gz) (SHA-256
+`2e5f9f094417332cfad7ac2b6d2d664a738d63fcafbc9b93a7171efe07f947ef`)
+returned status 0 for publication, fencing/outcomes and GC invariants on model
+SHA-256 `4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+It records the exact command, limits, tool hashes and raw verifier log; the
+cached tool distribution is not included. All 12 archived file hashes match
+their evidence copies. This bounded invariant result is not a full-suite or
+G0.3 gate pass.
+
+The [exploratory control-bound diagnostics](control-bound-diagnostics.tar.gz)
+(SHA-256 `9739f992b216775ba66e65101a7479642054052a70232d9e7501bba36e85af7d`)
+record 11 separate counterexamples on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+Ten controls were checked at exploratory depth 14 instead of their original
+depth 13; retry revalidation used its original depth 16. The archive records
+each actual trace length and identifies compound faults. These diagnostics do
+not replace original-bound results, a full checker run or a G0.3 gate pass.
