@@ -542,3 +542,13 @@ The compound fault closes the namespace while stage protection remains, then
 bypasses the independent namespace guard. The surrounding isolated diagnostic
 was still running when the archive was created; its final container status and
 inspection are not included. This does not establish a full-suite pass.
+
+The [page-base control depth evidence](page-base-control-depth.tar.gz) (SHA-256
+`09482fcdd0c0bb342e497044d9a81a63653de6887d2625c92f623c550240a6b4`)
+preserves the original 13-step `NoError` failure and a separate 14-step
+counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+The mutant bypasses the page-base check after a racer advances the head and the
+CAS revision is refreshed without rebuilding the protected page. The surrounding
+isolated diagnostic was still running when the archive was created; its final
+container status and inspection are not included. This is not a full-suite pass.
