@@ -553,6 +553,16 @@ CAS revision is refreshed without rebuilding the protected page. The surrounding
 isolated diagnostic was still running when the archive was created; its final
 container status and inspection are not included. This is not a full-suite pass.
 
+The [refresh control depth evidence](refresh-control-depth.tar.gz) (SHA-256
+`2e0c55ceeef31837e689d803f79f8bdd930fd47992bf43d5dc2965fb68caa204`)
+preserves the original 13-step `NoError` failure and a separate 14-step
+counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+The compound fault combines unsafe owner rebinding at refresh with bypass of
+the namespace guard. The surrounding isolated diagnostic was still running
+when the archive was created; its final container status and inspection are not
+included. This is not a full-suite pass.
+
 The [parent control depth evidence](parent-control-depth.tar.gz) (SHA-256
 `8e9150114f3d3aaa68a7f3c1b1a40a3fa0fa23943aa94fe7564735866f63c389`)
 preserves the original 13-step `NoError` failure and a separate 14-step
