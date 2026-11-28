@@ -36,6 +36,37 @@ the extracted bytes have SHA-256
 This evidence records that specific integration revision, not this subsequent
 evidence-only change or any later revision.
 
+## Later hosted timing observations
+
+The following selected successful Fast checks were observed in the public
+repository on 2026-11-28. Queue is run creation to job start; execution is job
+start to job completion; wall time is run creation to job completion. Times
+are UTC and are taken from the linked run and job metadata. Each was attempt 1
+with one `fast` job; the PR entries identify PR head revisions, while the main
+entry identifies the actual push revision.
+
+The [captured public run and job metadata](public-ci-timing-metadata.tar.gz)
+has SHA-256 `dac25c53c7bf701b37e1c61a223426be06a83c8d6306e9f3c2d0e44d3d86b5b9`.
+It contains the unmodified responses and exact `gh api` collection commands;
+GitHub's later PR metadata may change.
+
+| Run and revision | Created | Job start | Job completion | Queue | Execution | Wall |
+| --- | --- | --- | --- | ---: | ---: | ---: |
+| [PR #44, `911425fb`](https://github.com/trickle-labs/rockstream2/actions/runs/46141046406/job/140966828752) | 11:41:15 | 11:43:19 | 11:44:22 | 2:04 | 1:03 | 3:07 |
+| [PR #44, `f4c7cb59`](https://github.com/trickle-labs/rockstream2/actions/runs/46144267253/job/140976742161) | 12:21:39 | 12:21:42 | 12:22:46 | 0:03 | 1:04 | 1:07 |
+| [PR #44, `53456455`](https://github.com/trickle-labs/rockstream2/actions/runs/46146476179/job/140983532035) | 12:48:28 | 13:05:43 | 13:06:52 | 17:15 | 1:09 | 18:24 |
+| [main, `9eb000ec`](https://github.com/trickle-labs/rockstream2/actions/runs/46101521940/job/140844813663) | 03:09:56 | 03:13:27 | 03:14:20 | 3:31 | 0:53 | 4:24 |
+
+These selected observations span different revisions and PR/main strata and
+are not a predeclared representative sample. The 18:24 result exceeds both
+the five-minute median and ten-minute P95 objective thresholds for an
+individual observation; it alone does not determine either percentile. The
+short job execution times do not remove queue time from the objective. A
+repeatable, appropriately classified sample including incomplete and failed
+attempts remains necessary; no population timing percentile or G0.1 pass is
+claimed here. PR #44 remains an in-progress model change, so its results are
+not evidence for the final integration revision.
+
 ## Source and CI identity
 
 The observed implementation candidate was PR #17 head
@@ -89,5 +120,8 @@ before accepting any later port. Changes adding this record and the observation
 in ADR 0011 are evidence-only relative to `c258891`; re-run CI on the resulting
 PR head and again on the actual integration revision. A green earlier commit or
 synthetic merge cannot qualify a later source revision. Human review of the
-completed milestone, required-check configuration and branch protection remain
-separate actions.
+completed milestone remains separate. For G0, the owner-directed procedure in
+the [development workflow](../../docs/design/development-workflow.md#3-risk-based-required-checks)
+uses independent review and observed required CI without claiming branch
+enforcement. The workflow retains its separate protection requirement or
+reviewed maintainer decision for G1 and later.
