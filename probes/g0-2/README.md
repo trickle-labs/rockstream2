@@ -7,7 +7,8 @@ container bound to loopback, creates a test bucket, and stops the container in a
 `finally` block. Its fixed credentials are only for this temporary local instance;
 it has no option to target a remote endpoint. If the process itself is forcibly
 killed, remove any remaining `rockstream-g0-2-*` container manually.
-Startup waits at most 30 seconds for `/minio/health/cluster`; Silo documents
+Startup makes up to 30 attempts to reach `/minio/health/cluster`, each with a
+one-second HTTP timeout and a one-second pause after an unsuccessful attempt. Silo documents
 that `/minio/health/ready` can succeed before storage or IAM is initialized.
 See https://silo.pgsty.com/compatibility/feature/healthcheck/.
 
@@ -40,7 +41,7 @@ verifies that digest before applying the delta and applied-cut marker in one dur
 SlateDB batch. The runner delivers SIGKILL after publication and after the
 durable batch, reopens the writable instance and verifies the count is one.
 A deliberate recovery mutation ignores the marker and must fail the same
-count assertion. A corrupt referenced delta must fail digest validation. The
+count check. A corrupt referenced delta must fail digest validation. The
 probe also creates a non-expiring checkpoint, conditionally registers its ID in
 the root and checks that a stale root version cannot overwrite the registration.
 One in-memory overlay instance rejects byte- and count-cap exhaustion, stays

@@ -164,7 +164,7 @@ def main():
                 pass
             time.sleep(1)
         else:
-            raise RuntimeError("Silo cluster did not become ready within 30 seconds")
+            raise RuntimeError("Silo cluster did not become ready after 30 attempts")
 
         bucket = request("PUT")
         expect(bucket[0], 200, f"create bucket: {bucket[2]!r}")
