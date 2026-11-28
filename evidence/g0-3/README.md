@@ -1,5 +1,15 @@
 # G0.3 bounded model runs
 
+## Linux evaluator setup
+
+The [evaluator setup archive](linux-evaluator-setup.tar.gz) (SHA-256
+`01a25cc4d9dcfec1d102162f2e671caa041cf2d2b822601298673b9f64b25e70`)
+records a failed offline evaluator fetch, the upstream v0.8.0 Linux ARM64 asset
+identity, acquisition provenance and a successful isolated one-step observation
+with the verified evaluator mounted read-only. Evaluator execution is inferred
+from the pinned Quint code and the successful result, not independently traced.
+The archive excludes the binary and does not establish a full-suite or G0 pass.
+
 ## Current-model depth-3 TLC count
 
 On 2026-11-28, the exact model SHA-256
