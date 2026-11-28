@@ -532,3 +532,13 @@ The faulty publication bypasses both stale-owner and namespace fences. The
 surrounding isolated diagnostic was still running when the archive was created;
 its final container status and inspection are not included. This correction
 does not establish a full-suite pass.
+
+The [namespace-control depth evidence](namespace-control-depth.tar.gz) (SHA-256
+`e8903fc522d18b4404ac531815f424bc6646922dcacd75cd8fb3aefe04d8d3fa`)
+preserves the observed original-bound 13-step `NoError` failure and a separate
+14-step counterexample on model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`.
+The compound fault closes the namespace while stage protection remains, then
+bypasses the independent namespace guard. The surrounding isolated diagnostic
+was still running when the archive was created; its final container status and
+inspection are not included. This does not establish a full-suite pass.
