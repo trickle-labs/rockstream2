@@ -592,6 +592,15 @@ counterexample, involving an unsafe old/unprotected upload and bypass of the
 generation/protection guard. Runner completion does not mean the controls or
 full checker passed. Deeper diagnostic evidence is recorded separately.
 
+The [plan-revision control depth evidence](plan-control-depth.tar.gz) (SHA-256
+`257015cc242f36c69cc2f0445db301c67eaba4a1624ec46de648b68fbc1adade`)
+records the direct 13-step `publication` control's `NoError` failure and a
+separate 14-step observation trace with `badPlanCommit=true`, which violates
+the publication invariant. The latter supports the deeper bound by inference;
+it is not a direct 14-step invariant-control invocation. The surrounding
+isolated diagnostic was still running when archived, so final inspection and
+outcome are not included. This does not establish a full-suite pass.
+
 The [parent control depth evidence](parent-control-depth.tar.gz) (SHA-256
 `8e9150114f3d3aaa68a7f3c1b1a40a3fa0fa23943aa94fe7564735866f63c389`)
 preserves the original 13-step `NoError` failure and a separate 14-step
