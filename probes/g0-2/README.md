@@ -11,6 +11,15 @@ Startup waits at most 30 seconds for `/minio/health/cluster`; Silo documents
 that `/minio/health/ready` can succeed before storage or IAM is initialized.
 See https://silo.pgsty.com/compatibility/feature/healthcheck/.
 
+Run the standalone readiness regression tests with:
+
+```sh
+python3 -B -m unittest discover -s probes/g0-2 -p 'test_*.py' -v
+```
+
+These tests use fake child processes, do not require Docker, and run in the
+workspace fast gate.
+
 The assertions cover create-if-absent, duplicate creation, read-after-write,
 matching and stale expected-version writes, and two competing writes from the
 same version. The output includes individual local timings for diagnostics, not

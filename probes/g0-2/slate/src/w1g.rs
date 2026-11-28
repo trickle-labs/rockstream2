@@ -348,8 +348,16 @@ pub async fn recover(
     let baseline = golden.get(&2).ok_or("missing cut 2")?;
     let mut batch = WriteBatch::new();
     for region in ["North", "South"] {
+        let actual = recovered.get(region.as_bytes()).await?;
+        if reuse_dirty
+            && region == "North"
+            && baseline.get(region) != result.get(region)
+            && actual.as_deref() == Some(encode(result.get(region)).as_bytes())
+        {
+            return Err("negative-control: dirty checkpoint baseline mismatch".into());
+        }
         assert_eq!(
-            recovered.get(region.as_bytes()).await?.as_deref(),
+            actual.as_deref(),
             Some(encode(baseline.get(region)).as_bytes())
         );
         if baseline.get(region) != result.get(region) {
@@ -398,8 +406,12 @@ pub async fn recover_history(
         history.write(batch).await?.await_durable().await?;
     }
     for region in ["North", "South"] {
+        let actual = history.get(format!("cut/3/{region}")).await?;
+        if skip_replay && region == "North" && actual.is_none() {
+            return Err("negative-control: missing history replay".into());
+        }
         assert_eq!(
-            history.get(format!("cut/3/{region}")).await?.as_deref(),
+            actual.as_deref(),
             Some(encode(result.get(region)).as_bytes())
         );
     }

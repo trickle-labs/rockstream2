@@ -4,7 +4,8 @@
 import concurrent.futures
 import http.client
 import json
-import select
+import os
+import selectors
 import subprocess
 import sys
 import time
@@ -41,16 +42,52 @@ def expect(actual, expected, label):
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
 
 
+def expect_negative(result, marker, label):
+    if result.returncode == 0 or marker not in result.stderr:
+        raise AssertionError(f"{label}: {result.stderr!r}")
+
+
+def wait_for_ready(process, timeout):
+    deadline = time.monotonic() + timeout
+    stdout = bytearray()
+    stderr = bytearray()
+    with selectors.DefaultSelector() as selector:
+        selector.register(process.stdout, selectors.EVENT_READ, stdout)
+        selector.register(process.stderr, selectors.EVENT_READ, stderr)
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            events = selector.select(remaining)
+            if not events:
+                break
+            for key, _ in events:
+                chunk = os.read(key.fd, 4096)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                key.data.extend(chunk)
+                if key.data is stderr and len(stderr) > 65536:
+                    del stderr[:-65536]
+                if key.data is stdout:
+                    if b"\n" in stdout:
+                        return bytes(stdout.split(b"\n", 1)[0] + b"\n"), bytes(stderr)
+                    if len(stdout) > 65536:
+                        return None, bytes(stderr)
+    return None, bytes(stderr)
+
+
 def slate_recovery(binary):
     def kill_at_ready(mode, prefix):
         process = subprocess.Popen([binary, mode, prefix], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         line = None
+        stderr = b""
         try:
-            if select.select([process.stdout], [], [], 60)[0]:
-                line = process.stdout.readline()
+            line, stderr = wait_for_ready(process, 60)
         finally:
             process.kill()
-            _, stderr = process.communicate(timeout=10)
+            _, remaining_stderr = process.communicate(timeout=10)
+            stderr += remaining_stderr
         if line != b"READY\n":
             raise RuntimeError(f"{mode} failed to reach its crash boundary: {line!r} {stderr!r}")
         expect(process.returncode, -9, f"{mode} SIGKILL")
@@ -66,8 +103,7 @@ def slate_recovery(binary):
     result = recover("crash-after-apply")
     expect((result.returncode, result.stdout), (0, b"RECOVERED\n"), f"post-apply recovery: {result.stderr!r}")
     mutant = recover("crash-after-apply", "recover-reapply")
-    if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
-        raise AssertionError(f"double-apply negative control was not detected: {mutant.stderr!r}")
+    expect_negative(mutant, b"negative-control: double-apply count mismatch", "double-apply negative control was not detected")
     kill_at_ready("publish-corrupt", "corrupt-delta")
     corrupt = recover("corrupt-delta")
     if corrupt.returncode == 0 or b"delta digest mismatch" not in corrupt.stderr:
@@ -82,8 +118,7 @@ def slate_recovery(binary):
     result = recover("split-good", "takeover")
     expect((result.returncode, result.stdout), (0, b"RECOVERED\n"), f"split takeover: {result.stderr!r}")
     mutant = recover("split-bad", "takeover-bad")
-    if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
-        raise AssertionError(f"dirty-instance negative control was not detected: {mutant.stderr!r}")
+    expect_negative(mutant, b"negative-control: dirty takeover count mismatch", "dirty-instance negative control was not detected")
     comparison = recover("w1g", "w1g")
     if comparison.returncode != 0 or not comparison.stdout.startswith(b"W1G-COMPARED "):
         raise AssertionError(f"W1-G layouts failed: {comparison.stdout!r} {comparison.stderr!r}")
@@ -95,15 +130,13 @@ def slate_recovery(binary):
     expect((recovered.returncode, recovered.stdout), (0, b"W1G-RECOVERED\n"), f"W1-G checkpoint recovery: {recovered.stderr!r}")
     kill_at_ready("w1g-crash", "w1g-crash-bad")
     mutant = recover("w1g-crash-bad", "w1g-recover-bad")
-    if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
-        raise AssertionError(f"W1-G dirty-instance negative control was not detected: {mutant.stderr!r}")
+    expect_negative(mutant, b"negative-control: dirty checkpoint baseline mismatch", "W1-G dirty-instance negative control was not detected")
     for prefix in ("history-crash", "history-crash-bad"):
         kill_at_ready("w1g-root-crash", prefix)
     recovered = recover("history-crash", "w1g-history-recover")
     expect((recovered.returncode, recovered.stdout), (0, b"HISTORY-RECOVERED\n"), f"history recovery: {recovered.stderr!r}")
     mutant = recover("history-crash-bad", "w1g-history-bad")
-    if mutant.returncode == 0 or b"assertion" not in mutant.stderr:
-        raise AssertionError(f"history replay negative control was not detected: {mutant.stderr!r}")
+    expect_negative(mutant, b"negative-control: missing history replay", "history replay negative control was not detected")
     metrics = recover("synthetic", "synthetic")
     if metrics.returncode != 0 or metrics.stdout.count(b"SYNTHETIC layout=") != 2:
         raise AssertionError(f"synthetic experiment failed: {metrics.stdout!r} {metrics.stderr!r}")

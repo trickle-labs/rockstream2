@@ -146,7 +146,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         } else if applied.as_deref() != Some(b"1".as_slice()) {
             return Err(format!("invalid applied cut: {applied:?}").into());
         }
-        assert_eq!(db.get(b"count").await?.as_deref(), Some(b"1".as_slice()));
+        let actual_count = db.get(b"count").await?;
+        if actual_count.as_deref() == Some(b"2".as_slice()) {
+            match mode.as_str() {
+                "recover-reapply" => {
+                    return Err("negative-control: double-apply count mismatch".into())
+                }
+                "takeover-bad" => {
+                    return Err("negative-control: dirty takeover count mismatch".into())
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(actual_count.as_deref(), Some(b"1".as_slice()));
         if mode == "checkpoint" {
             let mut overlay = Overlay {
                 deltas: Vec::new(),
