@@ -141,10 +141,13 @@ Apalache is symbolic and does not report an enumerated state count. Separately,
 `models/g0/count-states.sh` runs a depth-3 exhaustive TLC exploration using
 Quint 0.34.0 and its Apalache 0.62.4 distribution. It appends a depth variable
 and wrapper actions to the same model without modifying its transitions. The
-recovered earlier-source run explored 16,490 distinct depth-tagged
-configurations (50,117 generated, zero queued); a protocol state reached at
-multiple depths is counted multiple times. The [evidence](../../evidence/g0-3/README.md#recovered-publication-boundary-run)
-records its exact source and recovery; it does not count the current model. The earlier 6,260 count and
+[current-model run](../../evidence/g0-3/README.md#current-model-depth-3-tlc-count)
+found 37,487 distinct depth-tagged configurations (162,607 generated, zero
+queued). A protocol state reached at multiple depths is counted multiple times;
+the TLC count has the fingerprint-collision limits recorded in the evidence.
+The [recovered earlier-source run](../../evidence/g0-3/README.md#recovered-publication-boundary-run)
+found 16,490 distinct depth-tagged configurations; it does not count the current
+model. The earlier 6,260 count and
 [projection](../../evidence/g0-3/README.md#depth-3-state-count) apply only to
 older models. No projection was computed for this model, and none of these
 counts enumerates the sixteen-step symbolic check. `QUINT` may name a

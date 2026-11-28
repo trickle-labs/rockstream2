@@ -1,5 +1,52 @@
 # G0.3 bounded model runs
 
+## Current-model depth-3 TLC count
+
+On 2026-11-28, the exact model SHA-256
+`4f052d1c73d18bce4331ab64c0706ac0bd7b0d8e50a81f12b252b1cc1c772650`
+and `count-states.sh` SHA-256
+`f0c6e65d466dcfb604c49d511650c57986884123b7c6604bf8313d9df44abaae`
+completed the separate depth-three TLC count. TLC generated **162,607**
+configurations and found **37,487 distinct depth-tagged configurations**, with
+zero queued and no reported invariant violation. Graph depth 4 includes the
+initial configuration. The wrapper can count the same protocol state more than
+once at different depths. TLC uses fingerprints: its log reports collision
+estimates of 2.5e-10 optimistically and 1.0e-11 based on actual fingerprints.
+These values and the count describe this bounded wrapper, not the distinct
+untagged state space or the separate sixteen-step symbolic check.
+
+The [raw run and runner](current-model-tlc-raw.tar.gz) have SHA-256
+`7d93ae457c4a552d84582345539696323b195952c185727cbd55716deadc0077`.
+The archive preserves the exact outer runner and `docker create` arguments,
+container inspections, generated wrapper and TLC configuration, per-invocation
+arguments and output, status, source snapshots and before/after input manifests,
+and the pinned image build record. All 78 archived regular files were compared
+with their source contents. The outer command was:
+
+```sh
+sh /Users/grove/.p2p/evidence/rockstream-g0-3/container-prep/campaign/run.sh tlc sha256:5190102c30b439f4f4a2dfce6e99e918546614ab0d467d2775f585dd6205cf85
+```
+
+The runner used a Linux arm64 Docker container with network disabled, read-only
+root and inputs, no published ports, a separate evidence mount, a 4 GiB memory
+limit and two CPUs. The temporary filesystem was executable for native solver
+libraries and remained `nosuid,nodev`. Pre- and post-run inspections passed;
+the external network probe returned `ENETUNREACH`, both input manifests matched,
+and the invocation and overall run exited zero without OOM. The wrapper records
+each output stream separately before replaying stdout then stderr, so their
+cross-stream ordering is not preserved.
+
+The run used Quint 0.34.0, Apalache 0.62.4, Node 26.13.1, Python 3.12.16 and
+Temurin OpenJDK 21.0.13+9. TLC reported one worker, a 512 MiB heap and a 64 MiB
+off-heap allowance. The Apalache JAR SHA-256 was
+`e5223915507b65cc5f1638bd037ede60f8a4fc1644aff46355779f9b05df9262`;
+the Quint npm lockfile was
+`360799e9945a369203433b09d84ef1ce8371e961e27c6e98b44b6f160b6f11dc`.
+The recorded `check.sh` snapshot SHA-256 was
+`93bb20790fcb2ad25ee84cb9b87ab72155a6eb46c981efae4e15a51dd21e091d`;
+the count did not execute it and does not establish that the full check passes.
+This evidence does not qualify G0.3, an implementation, or the G0 milestone.
+
 ## Recovered publication-boundary run
 
 **Verdict: inconclusive.** The isolated source checkout disappeared during a
